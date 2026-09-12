@@ -23,7 +23,7 @@ export default function RegisterScreen({ navigation }: any) {
     // Paso 2: crear el tenant (estudio) asociado a ese usuario
     const { error: tenantError } = await supabase
       .from('tenants')
-      .insert({ nombre: nombreEstudio, owner_user_id: data.user.id });
+      .insert({ nombre_estudio: nombreEstudio, owner_user_id: data.user.id });
 
     if (tenantError) {
       Alert.alert('Usuario creado, pero falló el estudio', tenantError.message);
