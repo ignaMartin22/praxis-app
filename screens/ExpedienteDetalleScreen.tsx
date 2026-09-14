@@ -9,6 +9,8 @@ import {
   Modal,
 } from 'react-native';
 import { supabase } from '../supabase';
+import { colors, radius, spacing } from '../theme';
+import type { ExpedienteDetalleProps } from '../types/navigation';
 
 type Expediente = {
   id: string;
@@ -21,7 +23,7 @@ type Expediente = {
 
 const ESTADOS = ['En inicio', 'En prueba', 'Para alegar', 'Sentencia', 'Archivado'];
 
-export default function ExpedienteDetalleScreen({ route }: any) {
+export default function ExpedienteDetalleScreen({ route }: ExpedienteDetalleProps) {
   const { expedienteId } = route.params;
   const [expediente, setExpediente] = useState<Expediente | null>(null);
   const [loading, setLoading] = useState(true);
@@ -82,7 +84,7 @@ export default function ExpedienteDetalleScreen({ route }: any) {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" />
+        <ActivityIndicator size="large" color={colors.gold} />
       </View>
     );
   }
@@ -154,50 +156,53 @@ export default function ExpedienteDetalleScreen({ route }: any) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 24, paddingTop: 32 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  caratula: { fontSize: 20, fontWeight: 'bold', marginBottom: 24 },
-  fila: { marginBottom: 18, borderBottomWidth: 1, borderBottomColor: '#eee', paddingBottom: 12 },
-  label: { fontSize: 12, color: '#888', marginBottom: 4, textTransform: 'uppercase' },
-  valor: { fontSize: 16 },
+  container: { flex: 1, backgroundColor: colors.navy, padding: spacing.lg, paddingTop: spacing.xl },
+  center: { flex: 1, backgroundColor: colors.navy, justifyContent: 'center', alignItems: 'center' },
+  caratula: { color: colors.ivory, fontSize: 25, fontWeight: '700', lineHeight: 32, marginBottom: spacing.xl },
+  fila: { backgroundColor: colors.navyElevated, marginBottom: spacing.sm, borderWidth: 1, borderColor: colors.borderSoft, borderRadius: radius.md, padding: spacing.md },
+  label: { fontSize: 11, color: colors.muted, fontWeight: '700', letterSpacing: 1, marginBottom: 6, textTransform: 'uppercase' },
+  valor: { color: colors.ivory, fontSize: 16 },
   selectBox: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
+    borderColor: colors.border,
+    backgroundColor: colors.navyInput,
+    borderRadius: radius.sm,
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
-  chevron: { color: '#999' },
+  chevron: { color: colors.gold },
   badge: {
-    color: '#0066cc',
+    color: colors.goldBright,
     fontWeight: '600',
   },
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: colors.overlay,
     justifyContent: 'center',
     alignItems: 'center',
   },
   modalBox: {
-    backgroundColor: 'white',
-    borderRadius: 12,
+    backgroundColor: colors.navyElevated,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
     padding: 20,
     width: '85%',
   },
-  modalTitulo: { fontSize: 16, fontWeight: 'bold', marginBottom: 12 },
-  opcion: { paddingVertical: 12, paddingHorizontal: 8, borderRadius: 8 },
-  opcionSeleccionada: { backgroundColor: '#e6f0ff' },
-  opcionTexto: { fontSize: 15 },
-  opcionTextoSeleccionado: { fontSize: 15, color: '#0066cc', fontWeight: '600' },
+  modalTitulo: { color: colors.ivory, fontSize: 18, fontWeight: '600', marginBottom: 12 },
+  opcion: { paddingVertical: 12, paddingHorizontal: 8, borderRadius: radius.sm },
+  opcionSeleccionada: { backgroundColor: colors.navySoft },
+  opcionTexto: { color: colors.mist, fontSize: 15 },
+  opcionTextoSeleccionado: { fontSize: 15, color: colors.goldBright, fontWeight: '600' },
   botonesModal: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
     marginTop: 16,
     gap: 20,
   },
-  cancelar: { color: '#999', fontSize: 15 },
-  guardar: { color: '#0066cc', fontWeight: '600', fontSize: 15 },
+  cancelar: { color: colors.muted, fontSize: 15 },
+  guardar: { color: colors.goldBright, fontWeight: '600', fontSize: 15 },
 });

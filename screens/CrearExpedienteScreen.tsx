@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Button, Alert, StyleSheet, Platform } from 'react-native';
+import { View, Text, TextInput, Alert, StyleSheet, Platform, TouchableOpacity, ActivityIndicator, ScrollView } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { supabase } from '../supabase';
 import { useAuth } from '../context/AuthContext';
+import { colors, radius, spacing } from '../theme';
+import type { CrearExpedienteProps } from '../types/navigation';
 
-export default function CrearExpedienteScreen({ navigation }: any) {
+export default function CrearExpedienteScreen({ navigation }: CrearExpedienteProps) {
   const { tenantId } = useAuth();
   const [numero, setNumero] = useState('');
   const [caratula, setCaratula] = useState('');
@@ -42,54 +44,78 @@ export default function CrearExpedienteScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Nuevo expediente</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Número de expediente"
-        value={numero}
-        onChangeText={setNumero}
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Carátula"
-        value={caratula}
-        onChangeText={setCaratula}
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Cliente (apellido)"
-        value={cliente}
-        onChangeText={setCliente}
-      />
-
-      <Text
-        style={styles.input}
-        onPress={() => setMostrarPicker(true)}
+      <ScrollView
+        contentContainerStyle={styles.formContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-        {fechaVencimiento
-          ? `Vencimiento: ${fechaVencimiento.toLocaleDateString('es-AR')}`
-          : 'Tocá para elegir fecha de vencimiento (opcional)'}
-      </Text>
-
-      {mostrarPicker && (
-        <DateTimePicker
-          value={fechaVencimiento ?? new Date()}
-          mode="date"
-          display={Platform.OS === 'ios' ? 'inline' : 'default'}
-          onChange={(event, selectedDate) => {
-            setMostrarPicker(Platform.OS === 'ios'); // en iOS el picker queda inline, en Android se cierra solo
-            if (selectedDate) setFechaVencimiento(selectedDate);
-          }}
+        <Text style={styles.eyebrow}>NUEVO REGISTRO</Text>
+        <Text style={styles.title}>Crear expediente</Text>
+        <Text style={styles.description}>Completá la información esencial para comenzar el seguimiento.</Text>
+        <Text style={styles.label}>IDENTIFICACIÓN</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Número de expediente"
+          value={numero}
+          onChangeText={setNumero}
+          placeholderTextColor={colors.muted}
         />
-      )}
+        <TextInput
+          style={styles.input}
+          placeholder="Carátula"
+          value={caratula}
+          onChangeText={setCaratula}
+          placeholderTextColor={colors.muted}
+        />
+        <TextInput
+          style={styles.input}
+          placeholder="Cliente (apellido)"
+          value={cliente}
+          onChangeText={setCliente}
+          placeholderTextColor={colors.muted}
+        />
 
-      <Button title={loading ? 'Guardando...' : 'Guardar expediente'} onPress={handleCrear} disabled={loading} />
+        <Text
+          style={[styles.input, styles.dateInput]}
+          onPress={() => setMostrarPicker(true)}
+        >
+          {fechaVencimiento
+            ? `Vencimiento: ${fechaVencimiento.toLocaleDateString('es-AR')}`
+            : 'Tocá para elegir fecha de vencimiento (opcional)'}
+        </Text>
+
+        {mostrarPicker && (
+          <DateTimePicker
+            value={fechaVencimiento ?? new Date()}
+            mode="date"
+            display={Platform.OS === 'ios' ? 'inline' : 'default'}
+            onChange={(event, selectedDate) => {
+              setMostrarPicker(false);
+              if (selectedDate) setFechaVencimiento(selectedDate);
+            }}
+          />
+        )}
+      </ScrollView>
+
+      <View style={styles.footer}>
+        <TouchableOpacity style={[styles.primaryButton, loading && styles.disabled]} onPress={handleCrear} disabled={loading}>
+          {loading ? <ActivityIndicator color={colors.navy} /> : <Text style={styles.primaryButtonText}>Guardar expediente</Text>}
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 24, paddingTop: 60 },
-  title: { fontSize: 22, fontWeight: 'bold', marginBottom: 24 },
-  input: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 12, marginBottom: 12 },
+  container: { flex: 1, backgroundColor: colors.navy },
+  formContent: { padding: spacing.lg, paddingTop: spacing.xl, paddingBottom: spacing.lg },
+  eyebrow: { color: colors.gold, fontSize: 11, fontWeight: '700', letterSpacing: 2, marginBottom: spacing.sm },
+  title: { color: colors.ivory, fontSize: 28, fontWeight: '700' },
+  description: { color: colors.mist, fontSize: 14, lineHeight: 21, marginTop: spacing.sm, marginBottom: spacing.xl },
+  label: { color: colors.muted, fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: spacing.sm },
+  input: { color: colors.ivory, backgroundColor: colors.navyElevated, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: 14, height: 52, marginBottom: spacing.md, fontSize: 15 },
+  dateInput: { color: colors.mist, paddingTop: 15 },
+  footer: { backgroundColor: colors.navy, paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.lg },
+  primaryButton: { height: 52, backgroundColor: colors.gold, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
+  primaryButtonText: { color: colors.navy, fontSize: 16, fontWeight: '700' }, disabled: { opacity: 0.6 },
 });

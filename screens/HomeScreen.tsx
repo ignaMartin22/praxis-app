@@ -11,6 +11,8 @@ import {
 } from 'react-native';
 import { supabase } from '../supabase';
 import { useAuth } from '../context/AuthContext';
+import { colors, radius, shadow, spacing } from '../theme';
+import type { HomeProps } from '../types/navigation';
 
 type Expediente = {
   id: string;
@@ -23,7 +25,7 @@ type Expediente = {
 
 const ESTADOS = ['En inicio', 'En prueba', 'Para alegar', 'Sentencia', 'Archivado'];
 
-export default function HomeScreen({ navigation }: any) {
+export default function HomeScreen({ navigation }: HomeProps) {
   const { tenantId } = useAuth();
   const [expedientes, setExpedientes] = useState<Expediente[]>([]);
   const [busqueda, setBusqueda] = useState('');
@@ -124,7 +126,11 @@ export default function HomeScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Mis expedientes</Text>
+      <View style={styles.header}>
+        <View><Text style={styles.eyebrow}>PRAXISAPP</Text><Text style={styles.title}>Expedientes</Text></View>
+        <View style={styles.headerMark}><Text style={styles.headerMarkText}>P</Text></View>
+      </View>
+      <Text style={styles.subtitle}>Tu práctica, organizada y al día.</Text>
 
       <View style={styles.filaBusqueda}>
         <TextInput
@@ -132,6 +138,7 @@ export default function HomeScreen({ navigation }: any) {
           placeholder="Buscar por apellido o carátula..."
           value={busqueda}
           onChangeText={setBusqueda}
+          placeholderTextColor={colors.muted}
         />
         <TouchableOpacity style={styles.botonFiltro} onPress={abrirModalFiltro}>
           <Text style={styles.iconoFiltro}>⚙︎</Text>
@@ -154,7 +161,7 @@ export default function HomeScreen({ navigation }: any) {
             onPress={() => navigation.navigate('ExpedienteDetalle', { expedienteId: item.id })}
           >
             <Text style={styles.caratula}>{item.caratula}</Text>
-            <Text>Expte. {item.numero_expediente} — {item.cliente_apellido}</Text>
+            <Text style={styles.expediente_nombre}>Expte. {item.numero_expediente} — {item.cliente_apellido}</Text>
             <Text style={styles.estado}>{item.estado}</Text>
           </TouchableOpacity>
         )}
@@ -213,20 +220,26 @@ export default function HomeScreen({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 24, paddingTop: 60 },
-  title: { fontSize: 22, fontWeight: 'bold', marginBottom: 16 },
-  filaBusqueda: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  buscador: { flex: 1, borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 10 },
+  container: { flex: 1, backgroundColor: colors.navy, paddingHorizontal: spacing.lg, paddingTop: 58 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  eyebrow: { color: colors.gold, fontSize: 11, fontWeight: '700', letterSpacing: 2.4, marginBottom: spacing.xs },
+  title: { color: colors.ivory, fontSize: 30, fontWeight: '700', letterSpacing: -0.5 },
+  subtitle: { color: colors.mist, fontSize: 14, marginTop: spacing.sm, marginBottom: spacing.lg },
+  headerMark: { width: 38, height: 38, borderRadius: 19, borderWidth: 1, borderColor: colors.goldMuted, alignItems: 'center', justifyContent: 'center' },
+  headerMarkText: { color: colors.goldBright, fontSize: 16, fontWeight: '700' },
+  filaBusqueda: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
+  buscador: { flex: 1, color: colors.ivory, backgroundColor: colors.navyInput, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: 14, height: 46 },
   botonFiltro: {
     width: 42,
     height: 42,
-    borderRadius: 8,
+    borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: '#ccc',
+    borderColor: colors.border,
+    backgroundColor: colors.navyElevated,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  iconoFiltro: { fontSize: 18 },
+  iconoFiltro: { color: colors.gold, fontSize: 18 },
   puntoActivo: {
     position: 'absolute',
     top: 6,
@@ -234,12 +247,14 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#0066cc',
+    backgroundColor: colors.gold,
   },
-  empty: { textAlign: 'center', color: '#999', marginTop: 24 },
-  card: { backgroundColor: '#f4f4f4', borderRadius: 8, padding: 12, marginBottom: 10 },
-  caratula: { fontWeight: 'bold' },
-  estado: { color: '#0066cc', marginTop: 4, fontSize: 12 },
+  empty: { textAlign: 'center', color: colors.muted, marginTop: spacing.xl },
+  card: { backgroundColor: colors.navyElevated, borderWidth: 1, borderColor: colors.borderSoft, borderRadius: radius.md, padding: spacing.md, marginBottom: 10 },
+  caratula: { color: colors.ivory, fontSize: 16, fontWeight: '600', flex: 1, paddingRight: spacing.sm },
+  expediente_nombre: {color: colors.muted, fontSize: 14, fontWeight: '600', flex: 1, paddingRight: spacing.sm },
+  estado: { color: colors.goldBright, marginTop: spacing.sm, fontSize: 12, fontWeight: '600' },
+  cardTop: { flexDirection: 'row', alignItems: 'center' }, cardArrow: { color: colors.gold, fontSize: 25, lineHeight: 22 }, meta: { color: colors.mist, fontSize: 12, marginTop: spacing.sm },
   fab: {
     position: 'absolute',
     right: 24,
@@ -247,31 +262,33 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: '#0066cc',
+    backgroundColor: colors.gold,
     justifyContent: 'center',
     alignItems: 'center',
-    elevation: 4,
+    ...shadow,
   },
-  fabText: { color: 'white', fontSize: 28, lineHeight: 30 },
+  fabText: { color: colors.navy, fontSize: 26, lineHeight: 30 },
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: colors.overlay,
     justifyContent: 'center',
     alignItems: 'center',
   },
   modalBox: {
-    backgroundColor: 'white',
-    borderRadius: 12,
+    backgroundColor: colors.navyElevated,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.lg,
     padding: 20,
     width: '85%',
     maxHeight: '80%',
   },
-  modalTitulo: { fontSize: 16, fontWeight: 'bold', marginBottom: 12 },
-  subtitulo: { fontSize: 12, color: '#888', textTransform: 'uppercase', marginBottom: 6, marginTop: 4 },
-  opcion: { paddingVertical: 10, paddingHorizontal: 8, borderRadius: 8 },
-  opcionSeleccionada: { backgroundColor: '#e6f0ff' },
-  opcionTexto: { fontSize: 15 },
-  opcionTextoSeleccionado: { fontSize: 15, color: '#0066cc', fontWeight: '600' },
+  modalTitulo: { color: colors.ivory, fontSize: 18, fontWeight: '600', marginBottom: 12 },
+  subtitulo: { fontSize: 12, color: colors.muted, textTransform: 'uppercase', marginBottom: 6, marginTop: 4 },
+  opcion: { paddingVertical: 10, paddingHorizontal: 8, borderRadius: radius.sm },
+  opcionSeleccionada: { backgroundColor: colors.navySoft },
+  opcionTexto: { color: colors.mist, fontSize: 15 },
+  opcionTextoSeleccionado: { fontSize: 15, color: colors.goldBright, fontWeight: '600' },
   // En StyleSheet, reemplazá filaOrden y agregá textoOrden:
 filaOrden: {
   flexDirection: 'row',
@@ -284,7 +301,7 @@ textoOrden: {
   flex: 1,
   flexShrink: 1,
   fontSize: 13,
-  color: '#333',
+  color: colors.mist,
 },
   botonesModal: {
     flexDirection: 'row',
@@ -292,6 +309,6 @@ textoOrden: {
     marginTop: 20,
     gap: 20,
   },
-  cancelar: { color: '#999', fontSize: 15 },
-  guardar: { color: '#0066cc', fontWeight: '600', fontSize: 15 },
+  cancelar: { color: colors.muted, fontSize: 15 },
+  guardar: { color: colors.goldBright, fontWeight: '600', fontSize: 15 },
 });
