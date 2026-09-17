@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, TextInput, Text, Alert, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, TextInput, Text, Alert, StyleSheet, TouchableOpacity, ActivityIndicator, Image } from 'react-native';
 import { supabase } from '../supabase';
 import { colors, radius, spacing } from '../theme';
 import type { RegisterProps } from '../types/navigation';
@@ -37,6 +37,7 @@ export default function RegisterScreen({ navigation }: RegisterProps) {
 
   return (
     <View style={styles.container}>
+      <Image source={require('../assets/Praxis_Logo.png')} style={styles.logo} />
       <Text style={styles.eyebrow}>PRAXISAPP</Text>
       <Text style={styles.title}>Crear tu estudio</Text>
       <Text style={styles.description}>Centralizá la gestión de tus expedientes con claridad y privacidad.</Text>
@@ -77,6 +78,7 @@ export default function RegisterScreen({ navigation }: RegisterProps) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, justifyContent: 'center', backgroundColor: colors.navy, padding: spacing.lg },
+  logo: { width: 64, height: 64, borderRadius: 18, marginBottom: spacing.lg },
   eyebrow: { color: colors.gold, fontSize: 12, fontWeight: '700', letterSpacing: 2.8, marginBottom: spacing.md },
   title: { color: colors.ivory, fontSize: 32, fontWeight: '700', letterSpacing: -0.6 },
   description: { color: colors.mist, fontSize: 15, lineHeight: 22, marginTop: spacing.sm, marginBottom: spacing.xl },

@@ -4,22 +4,27 @@
     "slug": "app-abogados",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/Praxis_Logo.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundColor": "#081525",
+        "foregroundImage": "./assets/Praxis_Logo.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/Praxis_Logo.png"
+    },
+    "splash": {
+      "image": "./assets/Praxis_Logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#081525"
     },
     "plugins": [
       "expo-sqlite",

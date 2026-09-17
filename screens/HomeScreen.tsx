@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Modal,
   Switch,
+  Image,
 } from 'react-native';
 import { supabase } from '../supabase';
 import { useAuth } from '../context/AuthContext';
@@ -127,8 +128,10 @@ export default function HomeScreen({ navigation }: HomeProps) {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <View><Text style={styles.eyebrow}>PRAXISAPP</Text><Text style={styles.title}>Expedientes</Text></View>
-        <View style={styles.headerMark}><Text style={styles.headerMarkText}>P</Text></View>
+        <View>
+           <Text style={styles.title}>Expedientes</Text>
+        </View>
+        <Image source={require('../assets/Praxis_Logo.png')} style={styles.logo} />
       </View>
       <Text style={styles.subtitle}>Tu práctica, organizada y al día.</Text>
 
@@ -223,10 +226,9 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.navy, paddingHorizontal: spacing.lg, paddingTop: 58 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   eyebrow: { color: colors.gold, fontSize: 11, fontWeight: '700', letterSpacing: 2.4, marginBottom: spacing.xs },
+  logo: { width: 44, height: 44, borderRadius: 12 },
   title: { color: colors.ivory, fontSize: 30, fontWeight: '700', letterSpacing: -0.5 },
   subtitle: { color: colors.mist, fontSize: 14, marginTop: spacing.sm, marginBottom: spacing.lg },
-  headerMark: { width: 38, height: 38, borderRadius: 19, borderWidth: 1, borderColor: colors.goldMuted, alignItems: 'center', justifyContent: 'center' },
-  headerMarkText: { color: colors.goldBright, fontSize: 16, fontWeight: '700' },
   filaBusqueda: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
   buscador: { flex: 1, color: colors.ivory, backgroundColor: colors.navyInput, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: 14, height: 46 },
   botonFiltro: {
