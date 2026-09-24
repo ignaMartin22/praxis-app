@@ -11,11 +11,14 @@ import {
   Linking,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
+import { MaterialIcons } from '@expo/vector-icons';
 import { supabase } from '../supabase';
 import { useAuth } from '../context/AuthContext';
 import { colors, radius, spacing } from '../theme';
 import type { ExpedienteDetalleProps } from '../types/navigation';
 import type { ExpedientePdf } from '../types/database';
+import { archivarExpediente, restaurarExpediente, ESTADOS_ACTIVOS } from '../services/expedientes';
+import type { Expediente } from '../services/expedientes';
 import {
   MAX_PDFS_POR_EXPEDIENTE,
   listarPdfs,
@@ -24,18 +27,7 @@ import {
   obtenerUrlFirmada,
 } from '../services/expedientePdfs';
 
-type Expediente = {
-  id: string;
-  numero_expediente: string;
-  caratula: string;
-  cliente_apellido: string;
-  estado: string;
-  fecha_vencimiento: string | null;
-};
-
-const ESTADOS = ['En inicio', 'En prueba', 'Para alegar', 'Sentencia', 'Archivado'];
-
-export default function ExpedienteDetalleScreen({ route }: ExpedienteDetalleProps) {
+export default function ExpedienteDetalleScreen({ route, navigation }: ExpedienteDetalleProps) {
   const { expedienteId } = route.params;
   const { tenantId } = useAuth();
   const [expediente, setExpediente] = useState<Expediente | null>(null);
@@ -49,6 +41,10 @@ export default function ExpedienteDetalleScreen({ route }: ExpedienteDetalleProp
   const [modalEstadoVisible, setModalEstadoVisible] = useState(false);
   const [estadoElegido, setEstadoElegido] = useState('');
   const [guardandoEstado, setGuardandoEstado] = useState(false);
+
+  // Modal de restauración
+  const [modalRestaurarVisible, setModalRestaurarVisible] = useState(false);
+  const [guardandoRestaurar, setGuardandoRestaurar] = useState(false);
 
   useEffect(() => {
     fetchExpediente();
@@ -80,6 +76,10 @@ export default function ExpedienteDetalleScreen({ route }: ExpedienteDetalleProp
 
   function abrirModalEstado() {
     if (!expediente) return;
+    if (expediente.estado === 'Archivado') {
+      abrirModalRestaurar();
+      return;
+    }
     setEstadoElegido(expediente.estado);
     setModalEstadoVisible(true);
   }
@@ -102,6 +102,53 @@ export default function ExpedienteDetalleScreen({ route }: ExpedienteDetalleProp
 
     setExpediente({ ...expediente, estado: estadoElegido });
     setModalEstadoVisible(false);
+  }
+
+  const archivado = expediente?.estado === 'Archivado';
+
+  function abrirModalRestaurar() {
+    setEstadoElegido(ESTADOS_ACTIVOS[0]);
+    setModalRestaurarVisible(true);
+  }
+
+  async function confirmarRestaurar() {
+    if (!expediente) return;
+    setGuardandoRestaurar(true);
+
+    const { error } = await restaurarExpediente(expedienteId, estadoElegido);
+
+    setGuardandoRestaurar(false);
+
+    if (error) {
+      Alert.alert('Error', 'No se pudo restaurar el expediente. Intentá de nuevo.');
+      return;
+    }
+
+    setExpediente({ ...expediente, estado: estadoElegido });
+    setModalRestaurarVisible(false);
+  }
+
+  function confirmarArchivar() {
+    if (!expediente) return;
+    Alert.alert(
+      'Archivar expediente',
+      `¿Archivar "${expediente.caratula}"? Podés restaurarlo desde "Expedientes archivados".`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Archivar',
+          style: 'destructive',
+          onPress: async () => {
+            const { error } = await archivarExpediente(expedienteId);
+            if (error) {
+              Alert.alert('Error', 'No se pudo archivar el expediente. Intentá de nuevo.');
+              return;
+            }
+            navigation.goBack();
+          },
+        },
+      ]
+    );
   }
 
   async function agregarPdf() {
@@ -226,7 +273,7 @@ export default function ExpedienteDetalleScreen({ route }: ExpedienteDetalleProp
         <Text style={styles.label}>Estado</Text>
         <TouchableOpacity style={styles.selectBox} onPress={abrirModalEstado}>
           <Text style={styles.badge}>{expediente.estado}</Text>
-          <Text style={styles.chevron}>▾</Text>
+          <MaterialIcons name="keyboard-arrow-down" size={22} color={colors.gold} />
         </TouchableOpacity>
       </View>
 
@@ -279,12 +326,22 @@ export default function ExpedienteDetalleScreen({ route }: ExpedienteDetalleProp
         )}
       </TouchableOpacity>
 
+      {archivado ? (
+        <TouchableOpacity style={styles.restaurarButton} onPress={abrirModalRestaurar}>
+          <Text style={styles.restaurarButtonText}>Restaurar expediente</Text>
+        </TouchableOpacity>
+      ) : (
+        <TouchableOpacity style={styles.archivarButton} onPress={confirmarArchivar}>
+          <Text style={styles.archivarButtonText}>Archivar expediente</Text>
+        </TouchableOpacity>
+      )}
+
       {/* Modal: elegir estado */}
       <Modal visible={modalEstadoVisible} transparent animationType="fade">
         <View style={styles.overlay}>
           <View style={styles.modalBox}>
             <Text style={styles.modalTitulo}>Cambiar estado</Text>
-            {ESTADOS.map((e) => (
+            {ESTADOS_ACTIVOS.map((e) => (
               <TouchableOpacity
                 key={e}
                 style={[styles.opcion, estadoElegido === e && styles.opcionSeleccionada]}
@@ -301,6 +358,35 @@ export default function ExpedienteDetalleScreen({ route }: ExpedienteDetalleProp
               </TouchableOpacity>
               <TouchableOpacity onPress={confirmarEstado} disabled={guardandoEstado}>
                 <Text style={styles.guardar}>{guardandoEstado ? 'Guardando...' : 'Guardar'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal: restaurar expediente */}
+      <Modal visible={modalRestaurarVisible} transparent animationType="fade">
+        <View style={styles.overlay}>
+          <View style={styles.modalBox}>
+            <Text style={styles.modalTitulo}>Restaurar expediente</Text>
+            <Text style={styles.modalDescripcion}>Elegí el estado al que querés que vuelva.</Text>
+            {ESTADOS_ACTIVOS.map((e) => (
+              <TouchableOpacity
+                key={e}
+                style={[styles.opcion, estadoElegido === e && styles.opcionSeleccionada]}
+                onPress={() => setEstadoElegido(e)}
+              >
+                <Text style={estadoElegido === e ? styles.opcionTextoSeleccionado : styles.opcionTexto}>
+                  {e}
+                </Text>
+              </TouchableOpacity>
+            ))}
+            <View style={styles.botonesModal}>
+              <TouchableOpacity onPress={() => setModalRestaurarVisible(false)}>
+                <Text style={styles.cancelar}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={confirmarRestaurar} disabled={guardandoRestaurar}>
+                <Text style={styles.guardar}>{guardandoRestaurar ? 'Restaurando...' : 'Restaurar'}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -329,7 +415,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
-  chevron: { color: colors.gold },
   badge: {
     color: colors.goldBright,
     fontWeight: '600',
@@ -384,6 +469,26 @@ const styles = StyleSheet.create({
   },
   addPdfDisabled: { opacity: 0.55 },
   addPdfButtonText: { color: colors.navy, fontSize: 15, fontWeight: '700' },
+  archivarButton: {
+    height: 50,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: spacing.md,
+  },
+  archivarButtonText: { color: colors.danger, fontSize: 15, fontWeight: '700' },
+  restaurarButton: {
+    height: 50,
+    borderRadius: radius.md,
+    backgroundColor: colors.success,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: spacing.md,
+  },
+  restaurarButtonText: { color: colors.navy, fontSize: 15, fontWeight: '700' },
+  modalDescripcion: { color: colors.mist, fontSize: 14, marginBottom: 12 },
   overlay: {
     flex: 1,
     backgroundColor: colors.overlay,

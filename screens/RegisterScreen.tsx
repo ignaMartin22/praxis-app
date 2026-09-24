@@ -39,10 +39,10 @@ export default function RegisterScreen({ navigation }: RegisterProps) {
     <View style={styles.container}>
       <Image source={require('../assets/Praxis_Logo.png')} style={styles.logo} />
       <Text style={styles.eyebrow}>PRAXISAPP</Text>
-      <Text style={styles.title}>Crear tu estudio</Text>
+      <Text style={styles.title}>Crear tu cuenta</Text>
       <Text style={styles.description}>Centralizá la gestión de tus expedientes con claridad y privacidad.</Text>
       <View style={styles.form}>
-      <Text style={styles.label}>NOMBRE DEL ESTUDIO</Text>
+      <Text style={styles.label}>NOMBRE DEL ESTUDIO - ABOGADO</Text>
       <TextInput
         style={styles.input}
         placeholder="Ej. Estudio González"

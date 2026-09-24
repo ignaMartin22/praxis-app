@@ -8,8 +8,12 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuth } from '../context/AuthContext';
 import { colors, radius, spacing } from '../theme';
+import type { RootStackParamList } from '../types/navigation';
 
 type SideDrawerProps = {
   visible: boolean;
@@ -19,6 +23,7 @@ type SideDrawerProps = {
 
 export default function SideDrawer({ visible, onOpen, onClose }: SideDrawerProps) {
   const { session, signOut } = useAuth();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const translateX = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const email = session?.user.email ?? '';
   const avatarLetter = email.charAt(0).toUpperCase() || '?';
@@ -61,6 +66,11 @@ export default function SideDrawer({ visible, onOpen, onClose }: SideDrawerProps
     await signOut();
   }
 
+  function irA(screen: 'Home' | 'ExpedientesArchivados') {
+    navigation.navigate(screen);
+    onClose();
+  }
+
   return (
     <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
       {!visible && <View {...edgePanResponder.panHandlers} style={styles.edgeSwipeZone} />}
@@ -73,7 +83,7 @@ export default function SideDrawer({ visible, onOpen, onClose }: SideDrawerProps
         <View style={styles.drawerHeader}>
           <Text style={styles.drawerTitle}>PRAXISAPP</Text>
           <TouchableOpacity accessibilityLabel="Cerrar menú" onPress={onClose} style={styles.closeButton}>
-            <Text style={styles.closeButtonText}>×</Text>
+            <Ionicons name="close" size={24} color={colors.mist} />
           </TouchableOpacity>
         </View>
         <View style={styles.profileSection}>
@@ -86,18 +96,18 @@ export default function SideDrawer({ visible, onOpen, onClose }: SideDrawerProps
 
         <View style={styles.menuSection}>
           <Text style={styles.sectionLabel}>NAVEGACIÓN</Text>
-          <View style={styles.menuItem}>
-            <Text style={styles.menuIcon}>▣</Text>
-            <Text style={styles.menuText}>Expedientes</Text>
-          </View>
-          <View style={styles.menuItem}>
-            <Text style={styles.menuIcon}>⌂</Text>
+          <TouchableOpacity style={styles.menuItem} onPress={() => irA('Home')}>
+            <Ionicons name="home-outline" size={20} color={colors.gold} style={styles.menuIcon} />
             <Text style={styles.menuText}>Inicio</Text>
-          </View>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.menuItem} onPress={() => irA('ExpedientesArchivados')}>
+            <Ionicons name="archive-outline" size={20} color={colors.gold} style={styles.menuIcon} />
+            <Text style={styles.menuText}>Expedientes archivados</Text>
+          </TouchableOpacity>
         </View>
 
         <TouchableOpacity style={styles.logoutButton} onPress={handleSignOut} activeOpacity={0.8}>
-          <Text style={styles.logoutIcon}>↪</Text>
+          <Ionicons name="log-out-outline" size={22} color={colors.goldBright} style={styles.logoutIcon} />
           <Text style={styles.logoutText}>Cerrar sesión</Text>
         </TouchableOpacity>
       </Animated.View>
@@ -127,7 +137,6 @@ const styles = StyleSheet.create({
   drawerHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.xl },
   drawerTitle: { color: colors.gold, fontSize: 11, fontWeight: '700', letterSpacing: 2 },
   closeButton: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  closeButtonText: { color: colors.mist, fontSize: 28, lineHeight: 30 },
   profileSection: { borderBottomWidth: 1, borderBottomColor: colors.border, paddingBottom: spacing.lg },
   avatar: { width: 58, height: 58, borderRadius: 29, backgroundColor: colors.gold, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.md },
   avatarText: { color: colors.navy, fontSize: 25, fontWeight: '700' },
@@ -136,9 +145,9 @@ const styles = StyleSheet.create({
   menuSection: { flex: 1, paddingTop: spacing.xl },
   sectionLabel: { color: colors.muted, fontSize: 11, fontWeight: '700', letterSpacing: 1.5, marginBottom: spacing.md },
   menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 13 },
-  menuIcon: { color: colors.gold, fontSize: 18, width: 30 },
+  menuIcon: { width: 30 },
   menuText: { color: colors.mist, fontSize: 16 },
   logoutButton: { flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.lg },
-  logoutIcon: { color: colors.goldBright, fontSize: 23, width: 30 },
+  logoutIcon: { width: 30 },
   logoutText: { color: colors.ivory, fontSize: 15, fontWeight: '600' },
 });

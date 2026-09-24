@@ -8,6 +8,7 @@ import RegisterScreen from './screens/RegisterScreen';
 import HomeScreen from './screens/HomeScreen';
 import CrearExpedienteScreen from './screens/CrearExpedienteScreen';
 import ExpedienteDetalleScreen from './screens/ExpedienteDetalleScreen';
+import ExpedientesArchivadosScreen from './screens/ExpedientesArchivadosScreen';
 import { colors } from './theme';
 import type { RootStackParamList } from './types/navigation';
 import SideDrawer from './components/SideDrawer';
@@ -35,6 +36,7 @@ function RootNavigator() {
     <Stack.Screen name="Home" component={HomeScreen} />
     <Stack.Screen name="CrearExpediente" component={CrearExpedienteScreen} options={{ headerShown: true, title: 'Nuevo expediente' }} />
   <Stack.Screen name="ExpedienteDetalle" component={ExpedienteDetalleScreen} options={{ headerShown: true, title: 'Expediente' }} />
+  <Stack.Screen name="ExpedientesArchivados" component={ExpedientesArchivadosScreen} options={{ headerShown: true, title: 'Expedientes archivados' }} />
   </>
       ) : (
         <>

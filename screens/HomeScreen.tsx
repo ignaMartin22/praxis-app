@@ -9,22 +9,17 @@ import {
   Modal,
   Switch,
   Image,
+  Alert,
 } from 'react-native';
 import { supabase } from '../supabase';
 import { useAuth } from '../context/AuthContext';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, radius, shadow, spacing } from '../theme';
+import SwipeableActionRow from '../components/SwipeableActionRow';
+import { nombreCanalUnico } from '../services/realtime';
+import { fetchExpedientes, archivarExpediente, ESTADOS_ACTIVOS } from '../services/expedientes';
+import type { Expediente } from '../services/expedientes';
 import type { HomeProps } from '../types/navigation';
-
-type Expediente = {
-  id: string;
-  numero_expediente: string;
-  caratula: string;
-  cliente_apellido: string;
-  estado: string;
-  fecha_vencimiento: string | null;
-};
-
-const ESTADOS = ['En inicio', 'En prueba', 'Para alegar', 'Sentencia', 'Archivado'];
 
 export default function HomeScreen({ navigation }: HomeProps) {
   const { tenantId } = useAuth();
@@ -43,18 +38,18 @@ export default function HomeScreen({ navigation }: HomeProps) {
   useEffect(() => {
     if (!tenantId) return;
 
-    fetchExpedientes();
+    cargarExpedientes();
 
     const channel = supabase
-      .channel('expedientes-changes')
+      .channel(nombreCanalUnico('expedientes-changes'))
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'expedientes', filter: `tenant_id=eq.${tenantId}` },
-        () => fetchExpedientes()
+        () => cargarExpedientes()
       )
       .subscribe();
 
-    const unsubscribeFocus = navigation.addListener('focus', fetchExpedientes);
+    const unsubscribeFocus = navigation.addListener('focus', cargarExpedientes);
 
     return () => {
       supabase.removeChannel(channel);
@@ -62,13 +57,31 @@ export default function HomeScreen({ navigation }: HomeProps) {
     };
   }, [tenantId]);
 
-  async function fetchExpedientes() {
-    const { data, error } = await supabase
-      .from('expedientes')
-      .select('*')
-      .order('creado_el', { ascending: false });
+  async function cargarExpedientes() {
+    const { data } = await fetchExpedientes({ archivados: false });
+    if (data) setExpedientes(data);
+  }
 
-    if (!error && data) setExpedientes(data as Expediente[]);
+  function confirmarArchivar(expediente: Expediente) {
+    Alert.alert(
+      'Archivar expediente',
+      `¿Archivar "${expediente.caratula}"? Podés restaurarlo desde "Expedientes archivados".`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Archivar',
+          style: 'destructive',
+          onPress: async () => {
+            const { error } = await archivarExpediente(expediente.id);
+            if (error) {
+              Alert.alert('Error', 'No se pudo archivar el expediente. Intentá de nuevo.');
+              return;
+            }
+            setExpedientes((prev) => prev.filter((e) => e.id !== expediente.id));
+          },
+        },
+      ]
+    );
   }
 
   function abrirModalFiltro() {
@@ -144,7 +157,7 @@ export default function HomeScreen({ navigation }: HomeProps) {
           placeholderTextColor={colors.muted}
         />
         <TouchableOpacity style={styles.botonFiltro} onPress={abrirModalFiltro}>
-          <Text style={styles.iconoFiltro}>⚙︎</Text>
+          <MaterialCommunityIcons name="tune-variant" size={20} color={colors.gold} />
           {hayFiltrosActivos && <View style={styles.puntoActivo} />}
         </TouchableOpacity>
       </View>
@@ -159,14 +172,16 @@ export default function HomeScreen({ navigation }: HomeProps) {
           </Text>
         }
         renderItem={({ item }) => (
-          <TouchableOpacity
-            style={styles.card}
+          <SwipeableActionRow
+            actionLabel="Archivar"
+            actionColor={colors.danger}
             onPress={() => navigation.navigate('ExpedienteDetalle', { expedienteId: item.id })}
+            onAction={() => confirmarArchivar(item)}
           >
             <Text style={styles.caratula}>{item.caratula}</Text>
             <Text style={styles.expediente_nombre}>Expte. {item.numero_expediente} — {item.cliente_apellido}</Text>
             <Text style={styles.estado}>{item.estado}</Text>
-          </TouchableOpacity>
+          </SwipeableActionRow>
         )}
       />
 
@@ -184,7 +199,7 @@ export default function HomeScreen({ navigation }: HomeProps) {
             <Text style={styles.modalTitulo}>Filtrar expedientes</Text>
 
             <Text style={styles.subtitulo}>Estado</Text>
-            {ESTADOS.map((e) => {
+            {ESTADOS_ACTIVOS.map((e) => {
               const activo = estadosBorrador.includes(e);
               return (
                 <TouchableOpacity
@@ -241,7 +256,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  iconoFiltro: { color: colors.gold, fontSize: 18 },
   puntoActivo: {
     position: 'absolute',
     top: 6,
@@ -252,7 +266,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.gold,
   },
   empty: { textAlign: 'center', color: colors.muted, marginTop: spacing.xl },
-  card: { backgroundColor: colors.navyElevated, borderWidth: 1, borderColor: colors.borderSoft, borderRadius: radius.md, padding: spacing.md, marginBottom: 10 },
+  card: { backgroundColor: colors.navyElevated, borderWidth: 1, borderColor: colors.borderSoft, borderRadius: radius.md, padding: spacing.md },
   caratula: { color: colors.ivory, fontSize: 16, fontWeight: '600', flex: 1, paddingRight: spacing.sm },
   expediente_nombre: {color: colors.muted, fontSize: 14, fontWeight: '600', flex: 1, paddingRight: spacing.sm },
   estado: { color: colors.goldBright, marginTop: spacing.sm, fontSize: 12, fontWeight: '600' },
