@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,18 +8,27 @@ import {
   TouchableOpacity,
   Modal,
   Alert,
+  Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { supabase } from '../supabase';
 import { useAuth } from '../context/AuthContext';
 import { colors, radius, spacing } from '../theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import SwipeableActionRow from '../components/SwipeableActionRow';
 import { nombreCanalUnico } from '../services/realtime';
 import { fetchExpedientes, restaurarExpediente, ESTADOS_ACTIVOS } from '../services/expedientes';
 import type { Expediente } from '../services/expedientes';
+import { useOnline } from '../services/useConnectividad';
+import { getIsOnline } from '../services/connectividad';
+import { guardarExpedientes, leerExpedientes } from '../services/cache';
 import type { ExpedientesArchivadosProps } from '../types/navigation';
 
 export default function ExpedientesArchivadosScreen({ navigation }: ExpedientesArchivadosProps) {
   const { tenantId } = useAuth();
+  const insets = useSafeAreaInsets();
+  const online = useOnline();
+  const onlineRef = useRef(online);
   const [expedientes, setExpedientes] = useState<Expediente[]>([]);
   const [busqueda, setBusqueda] = useState('');
 
@@ -52,8 +61,23 @@ export default function ExpedientesArchivadosScreen({ navigation }: ExpedientesA
 
   async function fetchLista() {
     const { data } = await fetchExpedientes({ archivados: true });
-    if (data) setExpedientes(data);
+    if (data) {
+      setExpedientes(data);
+      if (tenantId) void guardarExpedientes(tenantId, data);
+      return;
+    }
+    // Sin red: servimos desde la caché local (RF-26)
+    if (!getIsOnline() && tenantId) {
+      const cache = await leerExpedientes(tenantId);
+      if (cache) setExpedientes(cache.filter((e) => e.estado === 'Archivado'));
+    }
   }
+
+  // Al volver la conexión se refresca lo consultado (RF-28)
+  useEffect(() => {
+    if (online && !onlineRef.current) fetchLista();
+    onlineRef.current = online;
+  }, [online]);
 
   function abrirModalRestaurar(expediente: Expediente) {
     setExpedienteSeleccionado(expediente);
@@ -70,7 +94,7 @@ export default function ExpedientesArchivadosScreen({ navigation }: ExpedientesA
     setGuardando(false);
 
     if (error) {
-      Alert.alert('Error', 'No se pudo restaurar el expediente. Intentá de nuevo.');
+      Alert.alert('Error', error);
       return;
     }
 
@@ -86,7 +110,11 @@ export default function ExpedientesArchivadosScreen({ navigation }: ExpedientesA
   });
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 44 : 0}
+    >
       <TextInput
         style={styles.buscador}
         placeholder="Buscar por apellido o carátula..."
@@ -148,7 +176,7 @@ export default function ExpedientesArchivadosScreen({ navigation }: ExpedientesA
           </View>
         </View>
       </Modal>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

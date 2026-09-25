@@ -1,4 +1,6 @@
 import { supabase } from '../supabase';
+import { requiereConexion } from './connectividad';
+import { eliminarPdfCache } from './cache';
 import type { ExpedientePdf, TipoDocumento } from '../types/database';
 
 export const MAX_PDFS_POR_EXPEDIENTE = 5;
@@ -29,7 +31,7 @@ const TIPOS_DOCUMENTO: Record<
   },
 };
 
-const STORAGE_BUCKET = 'expediente-pdfs';
+export const STORAGE_BUCKET = 'expediente-pdfs';
 
 export type PdfParaSubir = {
   uri: string;
@@ -69,6 +71,8 @@ export async function subirDocumento(
   archivo: PdfParaSubir,
   tipo: TipoDocumento
 ): Promise<ResultadoPdf<ExpedientePdf>> {
+  const sinConexion = requiereConexion();
+  if (sinConexion) return { data: null, error: sinConexion };
   if (!tenantId) return { data: null, error: 'Tu sesión no es válida. Volvé a iniciar sesión.' };
 
   const configTipo = TIPOS_DOCUMENTO[tipo];
@@ -139,10 +143,14 @@ export async function subirDocumento(
 }
 
 export async function eliminarPdf(pdf: ExpedientePdf): Promise<ResultadoPdf<null>> {
+  const sinConexion = requiereConexion();
+  if (sinConexion) return { data: null, error: sinConexion };
+
   const { error } = await supabase.from('expediente_pdfs').delete().eq('id', pdf.id);
   if (error) return { data: null, error: 'No se pudo eliminar el documento. Intentá de nuevo.' };
 
   await supabase.storage.from(STORAGE_BUCKET).remove([pdf.storage_path]);
+  await eliminarPdfCache(pdf.id);
 
   return { data: null, error: null };
 }

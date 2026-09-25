@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,9 @@ import {
   Switch,
   Image,
   Alert,
+  Platform,
+  Linking,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { supabase } from '../supabase';
 import { useAuth } from '../context/AuthContext';
@@ -19,10 +22,38 @@ import SwipeableActionRow from '../components/SwipeableActionRow';
 import { nombreCanalUnico } from '../services/realtime';
 import { fetchExpedientes, archivarExpediente, ESTADOS_ACTIVOS } from '../services/expedientes';
 import type { Expediente } from '../services/expedientes';
+import { derivarVencimiento, VENCIMIENTO_LABELS } from '../services/vencimiento';
+import type { EstadoVencimiento } from '../services/vencimiento';
+import { useOnline } from '../services/useConnectividad';
+import { getIsOnline } from '../services/connectividad';
+import { guardarExpedientes, leerExpedientes } from '../services/cache';
+import { useEstadoPush } from '../services/push';
 import type { HomeProps } from '../types/navigation';
+
+const VENCIMIENTO_COLOR: Record<Exclude<EstadoVencimiento, null>, string> = {
+  vencido: colors.danger,
+  hoy: colors.goldBright,
+  manana: colors.gold,
+  proximo: colors.muted,
+};
+
+function renderChipVencimiento(fecha: string | null) {
+  const vencimiento = derivarVencimiento(fecha);
+  if (!vencimiento) return null;
+  return (
+    <View style={[styles.chip, { borderColor: VENCIMIENTO_COLOR[vencimiento] }]}>
+      <Text style={[styles.chipTexto, { color: VENCIMIENTO_COLOR[vencimiento] }]}>
+        {VENCIMIENTO_LABELS[vencimiento]}
+      </Text>
+    </View>
+  );
+}
 
 export default function HomeScreen({ navigation }: HomeProps) {
   const { tenantId } = useAuth();
+  const online = useOnline();
+  const onlineRef = useRef(online);
+  const estadoPush = useEstadoPush();
   const [expedientes, setExpedientes] = useState<Expediente[]>([]);
   const [busqueda, setBusqueda] = useState('');
 
@@ -59,8 +90,23 @@ export default function HomeScreen({ navigation }: HomeProps) {
 
   async function cargarExpedientes() {
     const { data } = await fetchExpedientes({ archivados: false });
-    if (data) setExpedientes(data);
+    if (data) {
+      setExpedientes(data);
+      if (tenantId) void guardarExpedientes(tenantId, data);
+      return;
+    }
+    // Sin red: servimos desde la caché local (RF-26)
+    if (!getIsOnline() && tenantId) {
+      const cache = await leerExpedientes(tenantId);
+      if (cache) setExpedientes(cache.filter((e) => e.estado !== 'Archivado'));
+    }
   }
+
+  // Al volver la conexión se refresca lo consultado (RF-28)
+  useEffect(() => {
+    if (online && !onlineRef.current) cargarExpedientes();
+    onlineRef.current = online;
+  }, [online]);
 
   function confirmarArchivar(expediente: Expediente) {
     Alert.alert(
@@ -74,7 +120,7 @@ export default function HomeScreen({ navigation }: HomeProps) {
           onPress: async () => {
             const { error } = await archivarExpediente(expediente.id);
             if (error) {
-              Alert.alert('Error', 'No se pudo archivar el expediente. Intentá de nuevo.');
+              Alert.alert('Error', error);
               return;
             }
             setExpedientes((prev) => prev.filter((e) => e.id !== expediente.id));
@@ -139,7 +185,7 @@ export default function HomeScreen({ navigation }: HomeProps) {
   const hayFiltrosActivos = estadosFiltro.length > 0 || ordenarPorVencimiento;
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={styles.header}>
         <View>
            <Text style={styles.title}>Expedientes</Text>
@@ -147,6 +193,17 @@ export default function HomeScreen({ navigation }: HomeProps) {
         <Image source={require('../assets/Praxis_Logo.png')} style={styles.logo} />
       </View>
       <Text style={styles.subtitle}>Tu práctica, organizada y al día.</Text>
+
+      {estadoPush === 'denegado' && (
+        <View style={styles.bannerPush}>
+          <Text style={styles.bannerPushTexto}>
+            Activá las notificaciones para no perderte los vencimientos de tus expedientes.
+          </Text>
+          <TouchableOpacity onPress={() => Linking.openSettings()} style={styles.bannerPushBoton}>
+            <Text style={styles.bannerPushAccion}>Activar</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       <View style={styles.filaBusqueda}>
         <TextInput
@@ -180,7 +237,10 @@ export default function HomeScreen({ navigation }: HomeProps) {
           >
             <Text style={styles.caratula}>{item.caratula}</Text>
             <Text style={styles.expediente_nombre}>Expte. {item.numero_expediente} — {item.cliente_apellido}</Text>
-            <Text style={styles.estado}>{item.estado}</Text>
+            <View style={styles.filaMeta}>
+              <Text style={styles.estado}>{item.estado}</Text>
+              {renderChipVencimiento(item.fecha_vencimiento)}
+            </View>
           </SwipeableActionRow>
         )}
       />
@@ -233,7 +293,7 @@ export default function HomeScreen({ navigation }: HomeProps) {
           </View>
         </View>
       </Modal>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -244,6 +304,22 @@ const styles = StyleSheet.create({
   logo: { width: 44, height: 44, borderRadius: 12 },
   title: { color: colors.ivory, fontSize: 30, fontWeight: '700', letterSpacing: -0.5 },
   subtitle: { color: colors.mist, fontSize: 14, marginTop: spacing.sm, marginBottom: spacing.lg },
+  bannerPush: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    backgroundColor: colors.navyElevated,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  bannerPushTexto: { color: colors.mist, fontSize: 13, flex: 1, lineHeight: 18 },
+  bannerPushBoton: { borderWidth: 1, borderColor: colors.gold, borderRadius: radius.pill, paddingHorizontal: 14, paddingVertical: 6 },
+  bannerPushAccion: { color: colors.goldBright, fontSize: 13, fontWeight: '700' },
   filaBusqueda: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
   buscador: { flex: 1, color: colors.ivory, backgroundColor: colors.navyInput, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: 14, height: 46 },
   botonFiltro: {
@@ -270,6 +346,16 @@ const styles = StyleSheet.create({
   caratula: { color: colors.ivory, fontSize: 16, fontWeight: '600', flex: 1, paddingRight: spacing.sm },
   expediente_nombre: {color: colors.muted, fontSize: 14, fontWeight: '600', flex: 1, paddingRight: spacing.sm },
   estado: { color: colors.goldBright, marginTop: spacing.sm, fontSize: 12, fontWeight: '600' },
+  filaMeta: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' },
+  chip: {
+    marginTop: spacing.sm,
+    borderWidth: 1,
+    borderRadius: radius.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    alignSelf: 'flex-start',
+  },
+  chipTexto: { fontSize: 11, fontWeight: '700' },
   cardTop: { flexDirection: 'row', alignItems: 'center' }, cardArrow: { color: colors.gold, fontSize: 25, lineHeight: 22 }, meta: { color: colors.mist, fontSize: 12, marginTop: spacing.sm },
   fab: {
     position: 'absolute',

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { View, TextInput, Text, Alert, StyleSheet, TouchableOpacity, ActivityIndicator, Image } from 'react-native';
+import { View, TextInput, Text, Alert, StyleSheet, TouchableOpacity, ActivityIndicator, Image, Platform, KeyboardAvoidingView } from 'react-native';
 import { supabase } from '../supabase';
+import { mensajeErrorAuth } from '../services/authErrors';
 import { colors, radius, spacing } from '../theme';
 import type { LoginProps } from '../types/navigation';
 
@@ -11,10 +12,10 @@ export default function LoginScreen({ navigation }: LoginProps) {
   async function handleLogin() {
     setLoading(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) Alert.alert('No pudimos ingresar', error.message);
+    if (error) Alert.alert('No pudimos ingresar', mensajeErrorAuth(error));
     setLoading(false);
   }
-  return <View style={styles.container}>
+  return <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     <View style={styles.brandBlock}><Image source={require('../assets/Praxis_Logo.png')} style={styles.logo} /><Text style={styles.eyebrow}>PRAXISAPP</Text><Text style={styles.title}>Tu práctica,{"\n"}en orden.</Text><Text style={styles.description}>Gestión profesional de expedientes, diseñada para abogados.</Text></View>
     <View style={styles.form}>
       <Text style={styles.formTitle}>Iniciar sesión</Text>
@@ -25,7 +26,7 @@ export default function LoginScreen({ navigation }: LoginProps) {
       <TouchableOpacity style={[styles.primaryButton, loading && styles.disabled]} onPress={handleLogin} disabled={loading}>{loading ? <ActivityIndicator color={colors.navy} /> : <Text style={styles.primaryButtonText}>Ingresar</Text>}</TouchableOpacity>
       <Text onPress={() => navigation.navigate('Register')} style={styles.link}>¿Primera vez? <Text style={styles.linkAccent}>Crear cuenta</Text></Text>
     </View>
-  </View>;
+  </KeyboardAvoidingView>;
 }
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.navy, padding: spacing.lg, justifyContent: 'center' },

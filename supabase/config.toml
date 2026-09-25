@@ -1,0 +1,15 @@
+# =============================================================================
+# Configuración mínima para deploy de funciones y programaciones.
+# Ajustá project_id al ref de tu proyecto local (no aplica a hosted directamente)
+# y setea la hora del cron en la zona horaria del servidor (hosted: UTC por defecto).
+#
+# Deploy:
+#   supabase login
+#   supabase functions deploy push-vencimientos --project-ref <TU_PROJECT_REF>
+# =============================================================================
+
+project_id = "app-abogados"
+
+[functions.push-vencimientos]
+verify_jwt = true
+cron = "0 9 * * *"

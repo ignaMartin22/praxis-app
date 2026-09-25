@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,9 @@ import {
   Modal,
   ScrollView,
   Linking,
+  TextInput,
+  Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -17,7 +20,7 @@ import { useAuth } from '../context/AuthContext';
 import { colors, radius, spacing } from '../theme';
 import type { ExpedienteDetalleProps } from '../types/navigation';
 import type { ExpedientePdf } from '../types/database';
-import { archivarExpediente, restaurarExpediente, ESTADOS_ACTIVOS } from '../services/expedientes';
+import { archivarExpediente, restaurarExpediente, cambiarEstadoExpediente, eliminarExpedienteDefinitivo, ESTADOS_ACTIVOS } from '../services/expedientes';
 import type { Expediente } from '../services/expedientes';
 import {
   MAX_PDFS_POR_EXPEDIENTE,
@@ -26,10 +29,24 @@ import {
   eliminarPdf,
   obtenerUrlFirmada,
 } from '../services/expedientePdfs';
+import { derivarVencimiento, VENCIMIENTO_LABELS } from '../services/vencimiento';
+import type { EstadoVencimiento } from '../services/vencimiento';
+import { useOnline } from '../services/useConnectividad';
+import { getIsOnline } from '../services/connectividad';
+import { guardarExpediente, leerExpediente, guardarPdfs, leerPdfs } from '../services/cache';
+
+const VENCIMIENTO_COLOR: Record<Exclude<EstadoVencimiento, null>, string> = {
+  vencido: colors.danger,
+  hoy: colors.goldBright,
+  manana: colors.gold,
+  proximo: colors.muted,
+};
 
 export default function ExpedienteDetalleScreen({ route, navigation }: ExpedienteDetalleProps) {
   const { expedienteId } = route.params;
   const { tenantId } = useAuth();
+  const online = useOnline();
+  const onlineRef = useRef(online);
   const [expediente, setExpediente] = useState<Expediente | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -46,10 +63,24 @@ export default function ExpedienteDetalleScreen({ route, navigation }: Expedient
   const [modalRestaurarVisible, setModalRestaurarVisible] = useState(false);
   const [guardandoRestaurar, setGuardandoRestaurar] = useState(false);
 
+  // Modal de borrado definitivo (solo expedientes archivados)
+  const [modalEliminarVisible, setModalEliminarVisible] = useState(false);
+  const [textoConfirmacion, setTextoConfirmacion] = useState('');
+  const [eliminando, setEliminando] = useState(false);
+
   useEffect(() => {
     fetchExpediente();
     fetchPdfs();
   }, [expedienteId]);
+
+  // Al volver la conexión se refresca lo consultado (RF-28)
+  useEffect(() => {
+    if (online && !onlineRef.current) {
+      fetchExpediente();
+      fetchPdfs();
+    }
+    onlineRef.current = online;
+  }, [online]);
 
   async function fetchExpediente() {
     setLoading(true);
@@ -59,7 +90,24 @@ export default function ExpedienteDetalleScreen({ route, navigation }: Expedient
       .eq('id', expedienteId)
       .single();
 
-    if (!error && data) setExpediente(data as Expediente);
+    if (!error && data) {
+      const e = data as Expediente;
+      setExpediente(e);
+      if (tenantId) void guardarExpediente(tenantId, e);
+      setLoading(false);
+      return;
+    }
+
+    // Sin red: servimos desde la caché local (RF-26)
+    if (!getIsOnline() && tenantId) {
+      const cache = await leerExpediente(expedienteId);
+      if (cache) {
+        setExpediente(cache);
+        setLoading(false);
+        return;
+      }
+    }
+
     setLoading(false);
   }
 
@@ -68,10 +116,17 @@ export default function ExpedienteDetalleScreen({ route, navigation }: Expedient
     const resultado = await listarPdfs(expedienteId);
     setPdfsLoading(false);
     if (resultado.error) {
+      // Sin red: servimos la lista desde la caché local (RF-26)
+      if (!getIsOnline()) {
+        const cache = await leerPdfs(expedienteId);
+        if (cache) setPdfs(cache);
+        return;
+      }
       Alert.alert('Atención', resultado.error);
       return;
     }
     setPdfs(resultado.data ?? []);
+    if (resultado.data) void guardarPdfs(expedienteId, resultado.data);
   }
 
   function abrirModalEstado() {
@@ -88,19 +143,18 @@ export default function ExpedienteDetalleScreen({ route, navigation }: Expedient
     if (!expediente) return;
     setGuardandoEstado(true);
 
-    const { error } = await supabase
-      .from('expedientes')
-      .update({ estado: estadoElegido })
-      .eq('id', expedienteId);
+    const { error } = await cambiarEstadoExpediente(expedienteId, estadoElegido);
 
     setGuardandoEstado(false);
 
     if (error) {
-      Alert.alert('Error', 'No se pudo actualizar el estado. Intentá de nuevo.');
+      Alert.alert('Error', error);
       return;
     }
 
-    setExpediente({ ...expediente, estado: estadoElegido });
+    const actualizado = { ...expediente, estado: estadoElegido };
+    setExpediente(actualizado);
+    if (tenantId) void guardarExpediente(tenantId, actualizado);
     setModalEstadoVisible(false);
   }
 
@@ -120,11 +174,13 @@ export default function ExpedienteDetalleScreen({ route, navigation }: Expedient
     setGuardandoRestaurar(false);
 
     if (error) {
-      Alert.alert('Error', 'No se pudo restaurar el expediente. Intentá de nuevo.');
+      Alert.alert('Error', error);
       return;
     }
 
-    setExpediente({ ...expediente, estado: estadoElegido });
+    const actualizado = { ...expediente, estado: estadoElegido };
+    setExpediente(actualizado);
+    if (tenantId) void guardarExpediente(tenantId, actualizado);
     setModalRestaurarVisible(false);
   }
 
@@ -141,7 +197,7 @@ export default function ExpedienteDetalleScreen({ route, navigation }: Expedient
           onPress: async () => {
             const { error } = await archivarExpediente(expedienteId);
             if (error) {
-              Alert.alert('Error', 'No se pudo archivar el expediente. Intentá de nuevo.');
+              Alert.alert('Error', error);
               return;
             }
             navigation.goBack();
@@ -149,6 +205,43 @@ export default function ExpedienteDetalleScreen({ route, navigation }: Expedient
         },
       ]
     );
+  }
+
+  function abrirModalEliminar() {
+    if (!expediente) return;
+    Alert.alert(
+      'Eliminar definitivamente',
+      `Se van a borrar "${expediente.caratula}" y todos sus documentos. Esta acción es irreversible.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Continuar',
+          style: 'destructive',
+          onPress: () => {
+            setTextoConfirmacion('');
+            setModalEliminarVisible(true);
+          },
+        },
+      ]
+    );
+  }
+
+  async function confirmarEliminacion() {
+    if (!expediente) return;
+    setEliminando(true);
+
+    const { error } = await eliminarExpedienteDefinitivo(expediente.id);
+
+    setEliminando(false);
+
+    if (error) {
+      Alert.alert('Error', error);
+      return;
+    }
+
+    setModalEliminarVisible(false);
+    setTextoConfirmacion('');
+    navigation.goBack();
   }
 
   async function agregarPdf() {
@@ -183,7 +276,11 @@ export default function ExpedienteDetalleScreen({ route, navigation }: Expedient
         Alert.alert('No se pudo agregar', res.error);
         return;
       }
-      if (res.data) setPdfs((prev) => [...prev, res.data as ExpedientePdf]);
+      if (res.data) {
+        const pdf = res.data as ExpedientePdf;
+        setPdfs((prev) => [...prev, pdf]);
+        void guardarPdfs(expedienteId, [...pdfs, pdf]);
+      }
     } catch {
       setSubiendoPdf(false);
       Alert.alert('Error', 'No se pudo seleccionar el archivo.');
@@ -191,6 +288,10 @@ export default function ExpedienteDetalleScreen({ route, navigation }: Expedient
   }
 
   async function abrirPdf(pdf: ExpedientePdf) {
+    if (!getIsOnline()) {
+      Alert.alert('Sin conexión', 'Necesitás conexión a internet para abrir un documento.');
+      return;
+    }
     const url = await obtenerUrlFirmada(pdf);
     if (!url) {
       Alert.alert('Error', 'No se pudo abrir el documento.');
@@ -254,6 +355,7 @@ export default function ExpedienteDetalleScreen({ route, navigation }: Expedient
   }
 
   const pdfAlCompleto = pdfs.length >= MAX_PDFS_POR_EXPEDIENTE;
+  const estadoVencimiento = derivarVencimiento(expediente.fecha_vencimiento);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -279,7 +381,18 @@ export default function ExpedienteDetalleScreen({ route, navigation }: Expedient
 
       <View style={styles.fila}>
         <Text style={styles.label}>Vencimiento</Text>
-        <Text style={styles.valor}>{formatFecha(expediente.fecha_vencimiento)}</Text>
+        {estadoVencimiento ? (
+          <View style={styles.filaValor}>
+            <Text style={styles.valor}>{formatFecha(expediente.fecha_vencimiento)}</Text>
+            <View style={[styles.chip, { borderColor: VENCIMIENTO_COLOR[estadoVencimiento] }]}>
+              <Text style={[styles.chipTexto, { color: VENCIMIENTO_COLOR[estadoVencimiento] }]}>
+                {VENCIMIENTO_LABELS[estadoVencimiento]}
+              </Text>
+            </View>
+          </View>
+        ) : (
+          <Text style={styles.valor}>{formatFecha(expediente.fecha_vencimiento)}</Text>
+        )}
       </View>
 
       <View style={styles.docsHeader}>
@@ -327,9 +440,14 @@ export default function ExpedienteDetalleScreen({ route, navigation }: Expedient
       </TouchableOpacity>
 
       {archivado ? (
-        <TouchableOpacity style={styles.restaurarButton} onPress={abrirModalRestaurar}>
-          <Text style={styles.restaurarButtonText}>Restaurar expediente</Text>
-        </TouchableOpacity>
+        <>
+          <TouchableOpacity style={styles.restaurarButton} onPress={abrirModalRestaurar}>
+            <Text style={styles.restaurarButtonText}>Restaurar expediente</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.eliminarButton} onPress={abrirModalEliminar}>
+            <Text style={styles.eliminarButtonText}>Eliminar definitivamente</Text>
+          </TouchableOpacity>
+        </>
       ) : (
         <TouchableOpacity style={styles.archivarButton} onPress={confirmarArchivar}>
           <Text style={styles.archivarButtonText}>Archivar expediente</Text>
@@ -392,6 +510,48 @@ export default function ExpedienteDetalleScreen({ route, navigation }: Expedient
           </View>
         </View>
       </Modal>
+
+      {/* Modal: eliminar definitivamente */}
+      <Modal visible={modalEliminarVisible} transparent animationType="fade">
+        <KeyboardAvoidingView
+          style={styles.overlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={styles.modalBox}>
+            <Text style={styles.modalTitulo}>Eliminar definitivamente</Text>
+            <Text style={styles.modalDescripcion}>
+              Esta acción borra el expediente y todos sus documentos. Escribí "ELIMINAR" para confirmar.
+            </Text>
+            <TextInput
+              style={styles.inputConfirmacion}
+              placeholder="ELIMINAR"
+              placeholderTextColor={colors.muted}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              value={textoConfirmacion}
+              onChangeText={setTextoConfirmacion}
+            />
+            <View style={styles.botonesModal}>
+              <TouchableOpacity onPress={() => setModalEliminarVisible(false)}>
+                <Text style={styles.cancelar}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={confirmarEliminacion}
+                disabled={textoConfirmacion.trim().toUpperCase() !== 'ELIMINAR' || eliminando}
+              >
+                <Text
+                  style={[
+                    styles.eliminarTexto,
+                    (textoConfirmacion.trim().toUpperCase() !== 'ELIMINAR' || eliminando) && styles.eliminarTextoDisabled,
+                  ]}
+                >
+                  {eliminando ? 'Eliminando...' : 'Eliminar definitivamente'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </ScrollView>
   );
 }
@@ -404,6 +564,14 @@ const styles = StyleSheet.create({
   fila: { backgroundColor: colors.navyElevated, marginBottom: spacing.sm, borderWidth: 1, borderColor: colors.borderSoft, borderRadius: radius.md, padding: spacing.md },
   label: { fontSize: 11, color: colors.muted, fontWeight: '700', letterSpacing: 1, marginBottom: 6, textTransform: 'uppercase' },
   valor: { color: colors.ivory, fontSize: 16 },
+  filaValor: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' },
+  chip: {
+    borderWidth: 1,
+    borderRadius: radius.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+  },
+  chipTexto: { fontSize: 11, fontWeight: '700' },
   selectBox: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -488,6 +656,29 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
   },
   restaurarButtonText: { color: colors.navy, fontSize: 15, fontWeight: '700' },
+  eliminarButton: {
+    height: 50,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: spacing.md,
+  },
+  eliminarButtonText: { color: colors.danger, fontSize: 15, fontWeight: '700' },
+  inputConfirmacion: {
+    color: colors.ivory,
+    backgroundColor: colors.navyInput,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: 14,
+    height: 48,
+    marginTop: spacing.md,
+    fontSize: 15,
+  },
+  eliminarTexto: { color: colors.danger, fontWeight: '600', fontSize: 15 },
+  eliminarTextoDisabled: { opacity: 0.4 },
   modalDescripcion: { color: colors.mist, fontSize: 14, marginBottom: 12 },
   overlay: {
     flex: 1,

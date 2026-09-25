@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Alert, StyleSheet, Platform, TouchableOpacity, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, TextInput, Alert, StyleSheet, Platform, TouchableOpacity, ActivityIndicator, ScrollView, KeyboardAvoidingView } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { supabase } from '../supabase';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { colors, radius, spacing } from '../theme';
+import { crearExpediente } from '../services/expedientes';
 import type { CrearExpedienteProps } from '../types/navigation';
 
 export default function CrearExpedienteScreen({ navigation }: CrearExpedienteProps) {
   const { tenantId } = useAuth();
+  const insets = useSafeAreaInsets();
   const [numero, setNumero] = useState('');
   const [caratula, setCaratula] = useState('');
   const [cliente, setCliente] = useState('');
@@ -22,12 +24,12 @@ export default function CrearExpedienteScreen({ navigation }: CrearExpedientePro
     }
     setLoading(true);
 
-    const { error } = await supabase.from('expedientes').insert({
+    const { error } = await crearExpediente({
+      tenant_id: tenantId,
       numero_expediente: numero,
       caratula,
       cliente_apellido: cliente,
       estado: 'En inicio',
-      tenant_id: tenantId,
       // toISOString().split('T')[0] da el formato YYYY-MM-DD que espera una columna "date"
       fecha_vencimiento: fechaVencimiento ? fechaVencimiento.toISOString().split('T')[0] : null,
     });
@@ -35,7 +37,7 @@ export default function CrearExpedienteScreen({ navigation }: CrearExpedientePro
     setLoading(false);
 
     if (error) {
-      Alert.alert('Error al crear expediente', error.message);
+      Alert.alert('Error al crear expediente', error);
       return;
     }
 
@@ -43,7 +45,11 @@ export default function CrearExpedienteScreen({ navigation }: CrearExpedientePro
   }
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 44 : 0}
+    >
       <ScrollView
         contentContainerStyle={styles.formContent}
         keyboardShouldPersistTaps="handled"
@@ -102,7 +108,7 @@ export default function CrearExpedienteScreen({ navigation }: CrearExpedientePro
           {loading ? <ActivityIndicator color={colors.navy} /> : <Text style={styles.primaryButtonText}>Guardar expediente</Text>}
         </TouchableOpacity>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
