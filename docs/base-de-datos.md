@@ -3,7 +3,7 @@
 Documento de referencia del esquema de Supabase (Postgres + Storage) y de las políticas RLS vigentes.
 Fuente: esquema y `pg_policies` exportados del proyecto; `supabase/expediente_pdfs.sql`; uso real en el código (`services/`, `screens/`, `context/`).
 
-> Estado verificado el 2026-09-30. Las políticas listadas son las que devolvió `pg_policies`; esa vista **no indica si RLS está habilitado** en cada tabla (ver [Pendientes](#pendientes-y-mejoras-recomendadas)).
+> Estado verificado el 2026-09-30, actualizado tras la migración [`expedientes` DELETE + baja de `documentos`](#historial-de-cambios). Las políticas listadas son las que devolvió `pg_policies` (más la nueva política DELETE de `expedientes`); esa vista **no indica si RLS está habilitado** en cada tabla (ver [Pendientes](#pendientes-y-mejoras-recomendadas)).
 
 ## 1. Modelo de aislamiento
 
@@ -42,13 +42,15 @@ Entidad central.
 
 Archivar = `estado = 'Archivado'`; restaurar = volver a un estado activo (`services/expedientes.ts`).
 
+Borrado definitivo: la política DELETE existe y las FK hijas (`plazos`, `expediente_pdfs`) usan `ON DELETE CASCADE` (verificado con `pg_constraint`, `confdeltype = 'c'`), por lo que borrar un expediente elimina sus plazos y sus filas de archivos. **No elimina los objetos de Storage**: la app debe borrarlos antes (ver Pendientes).
+
 ### `expediente_pdfs`
 Metadata de los archivos adjuntos de un expediente. Los bytes viven en Storage (bucket `expediente-pdfs`). Pese al nombre, el esquema admite `pdf`, `docx`, `jpg`, `png`; la UI del MVP solo adjunta PDF.
 
 | Columna | Tipo | Notas |
 |---|---|---|
 | `id` | uuid PK | |
-| `expediente_id` | uuid NOT NULL | FK → `expedientes(id)` (`ON DELETE CASCADE` según el script SQL) |
+| `expediente_id` | uuid NOT NULL | FK → `expedientes(id)` `ON DELETE CASCADE` (verificado en la base) |
 | `tenant_id` | uuid NOT NULL | FK → `tenants(id)` |
 | `storage_path` | text NOT NULL UNIQUE | `{tenant_id}/{expediente_id}/{uuid}.{ext}` |
 | `nombre_original` | text NOT NULL | |
@@ -64,7 +66,7 @@ Vencimientos procesales de un expediente (con aviso previo).
 | Columna | Tipo | Notas |
 |---|---|---|
 | `id` | uuid PK | |
-| `expediente_id` | uuid | nullable, FK → `expedientes(id)` |
+| `expediente_id` | uuid | nullable, FK → `expedientes(id)` `ON DELETE CASCADE` |
 | `tenant_id` | uuid NOT NULL | **sin FK** a `tenants` |
 | `descripcion` | varchar NOT NULL | |
 | `fecha_vencimiento` | timestamptz NOT NULL | |
@@ -87,17 +89,8 @@ Tokens de push por dispositivo.
 
 **Sin uso en el código actual** (las notificaciones push aún no están implementadas en la app).
 
-### `documentos` — tabla obsoleta
-| Columna | Tipo |
-|---|---|
-| `id` | uuid PK |
-| `expediente_id` | uuid (FK → `expedientes`) |
-| `tenant_id` | uuid NOT NULL (sin FK) |
-| `nombre_archivo`, `storage_path` | varchar NOT NULL |
-| `tipo` | varchar |
-| `creado_el` | timestamptz |
-
-**Verificación en el repositorio:** ninguna consulta `.from('documentos')` en `services/`, `screens/`, `context/` ni `types/`. Los únicos textos "documentos" son etiquetas de UI y menciones en `docs/` que se refieren a los archivos de `expediente_pdfs`. `supabase/expediente_pdfs.sql` no la crea ni la toca. Es un remanente de un diseño anterior que `expediente_pdfs` reemplazó, sin ventajas sobre esta (menos campos, sin FK de tenant, sin límite, sin políticas de borrado). **Conclusión: no tiene sentido mantenerla.** Antes de eliminarla, comprobar que está vacía (ver [Pendientes](#pendientes-y-mejoras-recomendadas)).
+### `documentos` — eliminada
+Tabla de un diseño anterior, reemplazada por `expediente_pdfs`. Se eliminó el 2026-09-30 (vacía y sin uso en el código). Ver [Historial de cambios](#historial-de-cambios). Los textos "documentos" que quedan en la UI y en `docs/` se refieren a los archivos de `expediente_pdfs`.
 
 ## 3. Funciones auxiliares
 
@@ -122,9 +115,9 @@ Todas permiten acceso únicamente a filas cuyo tenant pertenece a `auth.uid()`. 
 | `expedientes` | SELECT | usuarios ven expedientes de su tenant | public | `tenant_id IN (tenants del usuario)` |
 | `expedientes` | INSERT | usuarios crean expedientes en su tenant | public | ídem (WITH CHECK) |
 | `expedientes` | UPDATE | usuarios actualizan expedientes de su tenant | public | ídem (USING y WITH CHECK) |
+| `expedientes` | DELETE | `expedientes_delete_own_tenant` | authenticated | `is_tenant_owner(tenant_id)` |
 | `plazos` | SELECT | usuarios ven plazos de su tenant | public | `tenant_id IN (tenants del usuario)` |
 | `plazos` | INSERT | usuarios crean plazos en su tenant | public | ídem (WITH CHECK) |
-| `documentos` | SELECT / INSERT | usuarios ven / crean documentos en su tenant | public | `tenant_id IN (tenants del usuario)` |
 | `expediente_pdfs` | SELECT | `expediente_pdfs_select_own_tenant` | authenticated | `is_tenant_owner(tenant_id)` |
 | `expediente_pdfs` | INSERT | `expediente_pdfs_insert_own_tenant` | authenticated | `is_tenant_owner(tenant_id)` **y** el expediente referenciado pertenece al mismo tenant |
 | `expediente_pdfs` | DELETE | `expediente_pdfs_delete_own_tenant` | authenticated | `is_tenant_owner(tenant_id)` |
@@ -141,7 +134,7 @@ Las rutas tienen la forma `{tenant_id}/{expediente_id}/{uuid}.{ext}`; la primera
 | DELETE | `expediente_pdfs_storage_delete` | bucket correcto, `owner = auth.uid()`, primera carpeta = `get_tenant_id()` |
 
 ### Operaciones sin política (por lo tanto denegadas con RLS activo)
-`tenants` UPDATE/DELETE · `expedientes` **DELETE** · `plazos` UPDATE/DELETE · `documentos` UPDATE/DELETE · `expediente_pdfs` UPDATE · `notification_tokens` UPDATE · Storage UPDATE.
+`tenants` UPDATE/DELETE · `plazos` UPDATE/DELETE · `expediente_pdfs` UPDATE · `notification_tokens` UPDATE · Storage UPDATE.
 
 ## 5. Uso real desde la app
 
@@ -150,21 +143,28 @@ Las rutas tienen la forma `{tenant_id}/{expediente_id}/{uuid}.{ext}`; la primera
 | `tenants` | `context/AuthContext.tsx`, `screens/RegisterScreen.tsx` |
 | `expedientes` | `services/expedientes.ts`, `screens/ExpedienteDetalleScreen.tsx`, `screens/CrearExpedienteScreen.tsx` |
 | `expediente_pdfs` + bucket | `services/expedientePdfs.ts` |
-| `plazos`, `notification_tokens`, `documentos` | sin uso |
+| `plazos`, `notification_tokens` | sin uso |
 
 ## Pendientes y mejoras recomendadas
 
 Ordenadas por prioridad. Ninguna está aplicada; cualquier cambio en `supabase/` requiere confirmación previa.
 
-1. **Falta política DELETE en `expedientes`.** El RF-17 (borrado definitivo) no puede funcionar mientras no exista. Debe ser `is_tenant_owner(tenant_id)`, no `true`.
+1. **Implementar el borrado definitivo en la app (RF-17).** La base ya lo permite, pero la app debe eliminar primero los objetos del bucket (`ON DELETE CASCADE` borra las filas de `expediente_pdfs`, no los archivos de Storage): listar `storage_path` → `storage.remove([...])` → borrar el expediente, con doble confirmación.
 2. **Confirmar que RLS está habilitado** en todas las tablas: `select relname, relrowsecurity from pg_class where relnamespace = 'public'::regnamespace and relkind = 'r';`
-3. **Eliminar `documentos`** (y sus dos políticas) tras comprobar que está vacía: `select count(*) from public.documentos;`.
-4. **Cambiar el rol `public` por `authenticated`** en las políticas de `tenants`, `expedientes` y `plazos`, y unificarlas con `is_tenant_owner()`. Hoy funcionan porque `auth.uid()` es NULL para anónimos, pero `authenticated` es más explícito.
-5. **Borrado en cascada y Storage:** `ON DELETE CASCADE` elimina filas de `expediente_pdfs`, pero no los objetos de Storage. El borrado definitivo debe eliminar primero los archivos del bucket desde la app.
-6. **Integridad cruzada de `tenant_id`:** nada impide que un hijo tenga un `tenant_id` distinto al de su expediente (solo `expediente_pdfs` lo valida en su política INSERT). Solución: clave única `(id, tenant_id)` en `expedientes` y FK compuesta en las tablas hijas.
-7. **Validación de `estado`:** agregar `CHECK` con los cinco valores (el plan lo describe como enum, pero en la base es `varchar`).
-8. **`notification_tokens`:** agregar `UNIQUE (device_token)`, una política UPDATE (necesaria para `upsert`) y evaluar atarlo a `user_id`.
-9. **`plazos`:** completar FK de `tenant_id`, hacer `expediente_id` obligatorio si no habrá plazos sueltos, y definir si reemplazará a `expedientes.fecha_vencimiento` (hoy hay dos fechas de vencimiento).
-10. **Índices:** `expedientes (tenant_id, estado)`, `plazos (expediente_id)`, y un índice parcial `plazos (fecha_vencimiento) WHERE notificado = false` para el job de avisos.
-11. **Renombrar `expediente_pdfs`** a `expediente_archivos` si se habilitan otros tipos de archivo.
-12. Agregar `UNIQUE (tenant_id, numero_expediente)` si el número no debe repetirse dentro de un estudio.
+3. **Cambiar el rol `public` por `authenticated`** en las políticas de `tenants`, `expedientes` (SELECT/INSERT/UPDATE) y `plazos`, y unificarlas con `is_tenant_owner()`. Hoy funcionan porque `auth.uid()` es NULL para anónimos, pero `authenticated` es más explícito.
+4. **Integridad cruzada de `tenant_id`:** nada impide que un hijo tenga un `tenant_id` distinto al de su expediente (solo `expediente_pdfs` lo valida en su política INSERT). Solución: clave única `(id, tenant_id)` en `expedientes` y FK compuesta en las tablas hijas.
+5. **Validación de `estado`:** agregar `CHECK` con los cinco valores (el plan lo describe como enum, pero en la base es `varchar`).
+6. **`notification_tokens`:** agregar `UNIQUE (device_token)`, una política UPDATE (necesaria para `upsert`) y evaluar atarlo a `user_id`.
+7. **`plazos`:** completar FK de `tenant_id`, hacer `expediente_id` obligatorio si no habrá plazos sueltos, y definir si reemplazará a `expedientes.fecha_vencimiento` (hoy hay dos fechas de vencimiento).
+8. **Índices:** `expedientes (tenant_id, estado)`, `plazos (expediente_id)`, y un índice parcial `plazos (fecha_vencimiento) WHERE notificado = false` para el job de avisos.
+9. **Renombrar `expediente_pdfs`** a `expediente_archivos` si se habilitan otros tipos de archivo.
+10. Agregar `UNIQUE (tenant_id, numero_expediente)` si el número no debe repetirse dentro de un estudio.
+
+## Historial de cambios
+
+### 2026-09-30 — DELETE en `expedientes` y baja de `documentos`
+Aplicado manualmente en el SQL Editor de Supabase.
+
+- **Nueva política** `expedientes_delete_own_tenant` (`FOR DELETE TO authenticated USING (is_tenant_owner(tenant_id))`). Habilita el borrado definitivo (RF-17) solo para el dueño del tenant.
+- **Eliminada la tabla `documentos`** junto con sus dos políticas. Estaba vacía y no se usaba en el código; `expediente_pdfs` la reemplazaba.
+- **Verificación previa de FK hacia `expedientes`** (`pg_constraint.confdeltype`): `plazos_expediente_id_fkey`, `expediente_pdfs_expediente_id_fkey` y `documentos_expediente_id_fkey` eran todas `c` (`ON DELETE CASCADE`), por lo que no hizo falta modificar ninguna FK.
