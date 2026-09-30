@@ -84,17 +84,19 @@ El detalle completo de columnas, funciones y políticas está en [docs/base-de-d
 ## Estado
 
 * MVP en desarrollo. Funcionan: autenticación, expedientes (crear, listar, filtrar, cambiar estado, archivar, restaurar) y documentos.
-* **Pendiente:** borrado definitivo de expedientes con doble confirmación (la base ya lo permite; falta la pantalla y eliminar los archivos de Storage primero).
+* **Pendiente:** borrado definitivo de expedientes con doble confirmación (la base y el servicio `eliminarExpedienteDefinitivo` ya existen; falta conectarlo a la pantalla).
 * **Pendiente:** notificaciones push de vencimientos. Las tablas `plazos` y `notification_tokens` existen, pero la app todavía no las usa.
 * **Pendiente:** lectura sin conexión con caché local.
 * No hay tests automatizados todavía.
 
 ## Riesgos, dicho claramente
 
-* **La sesión se guarda en `AsyncStorage`.** El proyecto exige `expo-secure-store`, que aún no está integrado. Es la deuda de seguridad más importante.
-* **La URL y la clave pública de Supabase están en el código** (`supabase.ts`). Es la clave `anon`/publishable, pensada para el cliente, y la seguridad depende de RLS. Conviene moverlas a variables de entorno.
-* **Confirmar RLS activo en todas las tablas.** El repositorio documenta las políticas, pero hay que verificar en la base que cada tabla tenga RLS habilitado (consulta en [docs/base-de-datos.md](docs/base-de-datos.md)).
-* **Borrado en cascada no limpia Storage.** Eliminar un expediente borra sus filas de archivos, pero no los objetos del bucket, hasta que la app lo haga explícitamente.
+* **RLS sin confirmar en la base.** El repositorio documenta las políticas, pero falta verificar que cada tabla y `storage.objects` tengan RLS habilitado. Ejecutar `supabase/verificar_rls.sql`: todas las filas deben dar `rls_activo = true`.
+* **La clave pública de Supabase es visible en el bundle.** Es la clave `anon`/publishable, pensada para el cliente, así que la seguridad depende de RLS. Ya no está fija en el código (se lee de `.env`), pero sigue en el historial de git; conviene rotarla desde el dashboard.
+* **El borrado definitivo todavía no tiene pantalla.** `eliminarExpedienteDefinitivo` (en `services/expedientes.ts`) ya limpia Storage, pero falta conectarlo a la UI con doble confirmación.
+* **Posibles archivos huérfanos en Storage.** Si falla la red entre borrar la fila y el objeto de un documento, el archivo queda suelto. `supabase/archivos_huerfanos.sql` los lista.
+
+Resueltos: la sesión ahora se guarda en `expo-secure-store` (`services/secureSessionStorage.ts`, con migración automática desde `AsyncStorage`) y la URL y la clave de Supabase salen de variables de entorno.
 
 ## Correrlo localmente
 
@@ -102,8 +104,11 @@ Requisitos: Node.js, la app Expo Go (o un emulador) y acceso a un proyecto de Su
 
 ```bash
 npm install
+cp .env.example .env   # completá la URL y la clave anon de tu proyecto Supabase
 npm start
 ```
+
+`.env` no se sube al repositorio. Solo debe contener la clave `anon`/publishable, nunca la service role key.
 
 Otros comandos:
 
@@ -128,6 +133,8 @@ Los scripts de `supabase/` se ejecutan en el SQL Editor del dashboard de Supabas
 |---|---|
 | `expediente_pdfs.sql` | Funciones de tenancy, bucket privado, tabla de archivos, políticas RLS y límite de 5 archivos |
 | `expedientes_delete_y_drop_documentos.sql` | Política DELETE en `expedientes` y baja de la tabla obsoleta `documentos` |
+| `verificar_rls.sql` | Solo lectura: confirma que RLS está activo y lista las políticas |
+| `archivos_huerfanos.sql` | Solo lectura: lista objetos del bucket sin fila en `expediente_pdfs` |
 
 ## Documentos
 

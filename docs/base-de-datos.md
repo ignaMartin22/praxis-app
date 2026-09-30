@@ -149,8 +149,8 @@ Las rutas tienen la forma `{tenant_id}/{expediente_id}/{uuid}.{ext}`; la primera
 
 Ordenadas por prioridad. Ninguna está aplicada; cualquier cambio en `supabase/` requiere confirmación previa.
 
-1. **Implementar el borrado definitivo en la app (RF-17).** La base ya lo permite, pero la app debe eliminar primero los objetos del bucket (`ON DELETE CASCADE` borra las filas de `expediente_pdfs`, no los archivos de Storage): listar `storage_path` → `storage.remove([...])` → borrar el expediente, con doble confirmación.
-2. **Confirmar que RLS está habilitado** en todas las tablas: `select relname, relrowsecurity from pg_class where relnamespace = 'public'::regnamespace and relkind = 'r';`
+1. **Conectar el borrado definitivo a la pantalla (RF-17).** El servicio `eliminarExpedienteDefinitivo` (`services/expedientes.ts`) ya borra primero los objetos del bucket y luego el expediente (`ON DELETE CASCADE` no limpia Storage por sí solo); falta la UI con doble confirmación.
+2. **Confirmar que RLS está habilitado** en todas las tablas y en `storage.objects`: ejecutar `supabase/verificar_rls.sql`. Además, `supabase/archivos_huerfanos.sql` lista objetos del bucket sin fila en `expediente_pdfs`.
 3. **Cambiar el rol `public` por `authenticated`** en las políticas de `tenants`, `expedientes` (SELECT/INSERT/UPDATE) y `plazos`, y unificarlas con `is_tenant_owner()`. Hoy funcionan porque `auth.uid()` es NULL para anónimos, pero `authenticated` es más explícito.
 4. **Integridad cruzada de `tenant_id`:** nada impide que un hijo tenga un `tenant_id` distinto al de su expediente (solo `expediente_pdfs` lo valida en su política INSERT). Solución: clave única `(id, tenant_id)` en `expedientes` y FK compuesta en las tablas hijas.
 5. **Validación de `estado`:** agregar `CHECK` con los cinco valores (el plan lo describe como enum, pero en la base es `varchar`).
