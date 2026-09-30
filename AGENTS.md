@@ -33,7 +33,7 @@ Aplicación móvil diseñada para abogados, su principal función es brindar una
   - `AuthContext` debe validar y actualizar el estado de autenticación de forma segura y escuchar los cambios de sesión de Supabase (`onAuthStateChange`).
   - No mezcles lógica de negocio ni consultas directas a Base de Datos dentro de los componentes visuales de `screens/`; extrae las consultas a servicios dedicados o hooks personalizados.
 - **Tipado Estricto (TypeScript):**
-  - Prohibido el uso de `any`. Define tipos explícitos e interfaces para todas las entidades de la base de datos (Expedientes, Clientes, Movimientos) basándote en los tipos generados de Supabase (`Database['public']['Tables']`).
+  - Prohibido el uso de `any`. Define tipos explícitos e interfaces para todas las entidades de la base de datos (Expedientes, Plazos, Archivos de expediente, Tokens de notificación). Los clientes NO son una entidad del sistema: solo existe `cliente_apellido` como campo de texto dentro de `expedientes` basándote en los tipos generados de Supabase (`Database['public']['Tables']`).
 - **Control de Errores:**
   - Todas las peticiones a Supabase deben incluir manejo de errores claro (`try/catch` o verificación de `error` devuelto) e informar al usuario de manera segura sin mostrar stack traces ni mensajes internos del backend.
 
