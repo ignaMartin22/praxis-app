@@ -42,7 +42,7 @@ Entidad central.
 
 Archivar = `estado = 'Archivado'`; restaurar = volver a un estado activo (`services/expedientes.ts`).
 
-Borrado definitivo: la política DELETE existe y las FK hijas (`plazos`, `expediente_pdfs`) usan `ON DELETE CASCADE` (verificado con `pg_constraint`, `confdeltype = 'c'`), por lo que borrar un expediente elimina sus plazos y sus filas de archivos. **No elimina los objetos de Storage**: la app debe borrarlos antes (ver Pendientes).
+Borrado definitivo: la política DELETE existe y las FK hijas (`plazos`, `expediente_pdfs`) usan `ON DELETE CASCADE` (verificado con `pg_constraint`, `confdeltype = 'c'`), por lo que borrar un expediente elimina sus plazos y sus filas de archivos. **No elimina los objetos de Storage**: por eso la app los borra antes (`eliminarExpedienteDefinitivo`).
 
 ### `expediente_pdfs`
 Metadata de los archivos adjuntos de un expediente. Los bytes viven en Storage (bucket `expediente-pdfs`). Pese al nombre, el esquema admite `pdf`, `docx`, `jpg`, `png`; la UI del MVP solo adjunta PDF.
@@ -149,14 +149,14 @@ Las rutas tienen la forma `{tenant_id}/{expediente_id}/{uuid}.{ext}`; la primera
 
 Ordenadas por prioridad. Ninguna está aplicada; cualquier cambio en `supabase/` requiere confirmación previa.
 
-3. **Cambiar el rol `public` por `authenticated`** en las políticas de `tenants`, `expedientes` (SELECT/INSERT/UPDATE) y `plazos`, y unificarlas con `is_tenant_owner()`. Hoy funcionan porque `auth.uid()` es NULL para anónimos, pero `authenticated` es más explícito.
-4. **Integridad cruzada de `tenant_id`:** nada impide que un hijo tenga un `tenant_id` distinto al de su expediente (solo `expediente_pdfs` lo valida en su política INSERT). Solución: clave única `(id, tenant_id)` en `expedientes` y FK compuesta en las tablas hijas.
-5. **Validación de `estado`:** agregar `CHECK` con los cinco valores (el plan lo describe como enum, pero en la base es `varchar`).
-6. **`notification_tokens`:** agregar `UNIQUE (device_token)`, una política UPDATE (necesaria para `upsert`) y evaluar atarlo a `user_id`.
-7. **`plazos`:** completar FK de `tenant_id`, hacer `expediente_id` obligatorio si no habrá plazos sueltos, y definir si reemplazará a `expedientes.fecha_vencimiento` (hoy hay dos fechas de vencimiento).
-8. **Índices:** `expedientes (tenant_id, estado)`, `plazos (expediente_id)`, y un índice parcial `plazos (fecha_vencimiento) WHERE notificado = false` para el job de avisos.
-9. **Renombrar `expediente_pdfs`** a `expediente_archivos` si se habilitan otros tipos de archivo.
-10. Agregar `UNIQUE (tenant_id, numero_expediente)` si el número no debe repetirse dentro de un estudio.
+1. **Cambiar el rol `public` por `authenticated`** en las políticas de `tenants`, `expedientes` (SELECT/INSERT/UPDATE) y `plazos`, y unificarlas con `is_tenant_owner()`. Hoy funcionan porque `auth.uid()` es NULL para anónimos, pero `authenticated` es más explícito.
+2. **Integridad cruzada de `tenant_id`:** nada impide que un hijo tenga un `tenant_id` distinto al de su expediente (solo `expediente_pdfs` lo valida en su política INSERT). Solución: clave única `(id, tenant_id)` en `expedientes` y FK compuesta en las tablas hijas.
+3. **Validación de `estado`:** agregar `CHECK` con los cinco valores (el plan lo describe como enum, pero en la base es `varchar`).
+4. **`notification_tokens`:** agregar `UNIQUE (device_token)`, una política UPDATE (necesaria para `upsert`) y evaluar atarlo a `user_id`.
+5. **`plazos`:** completar FK de `tenant_id`, hacer `expediente_id` obligatorio si no habrá plazos sueltos, y definir si reemplazará a `expedientes.fecha_vencimiento` (hoy hay dos fechas de vencimiento).
+6. **Índices:** `expedientes (tenant_id, estado)`, `plazos (expediente_id)`, y un índice parcial `plazos (fecha_vencimiento) WHERE notificado = false` para el job de avisos.
+7. **Renombrar `expediente_pdfs`** a `expediente_archivos` si se habilitan otros tipos de archivo.
+8. Agregar `UNIQUE (tenant_id, numero_expediente)` si el número no debe repetirse dentro de un estudio.
 
 ## Historial de cambios
 
@@ -172,3 +172,6 @@ Ejecutado `supabase/verificar_rls.sql` en el SQL Editor: todas las tablas de `pu
 
 ### 2026-10-01 — Borrado definitivo en la app
 La pantalla de detalle de un expediente archivado ofrece "Eliminar definitivamente", con doble confirmación (RF-17). Usa `eliminarExpedienteDefinitivo`, que borra primero los objetos del bucket y después el expediente (la cascada elimina filas de archivos y plazos).
+
+### 2026-10-01 — Archivos huérfanos en Storage
+Ejecutado `supabase/archivos_huerfanos.sql`: el bucket `expediente-pdfs` no tiene objetos sin fila en `expediente_pdfs`. No hizo falta ninguna limpieza.
