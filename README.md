@@ -84,7 +84,6 @@ El detalle completo de columnas, funciones y políticas está en [docs/base-de-d
 ## Estado
 
 * MVP en desarrollo. Funcionan: autenticación, expedientes (crear, listar, filtrar, cambiar estado, archivar, restaurar) y documentos.
-* **Pendiente:** borrado definitivo de expedientes con doble confirmación (la base y el servicio `eliminarExpedienteDefinitivo` ya existen; falta conectarlo a la pantalla).
 * **Pendiente:** notificaciones push de vencimientos. Las tablas `plazos` y `notification_tokens` existen, pero la app todavía no las usa.
 * **Pendiente:** lectura sin conexión con caché local.
 * No hay tests automatizados todavía.
@@ -92,7 +91,6 @@ El detalle completo de columnas, funciones y políticas está en [docs/base-de-d
 ## Riesgos, dicho claramente
 
 * **La clave pública de Supabase es visible en el bundle.** Es la clave `anon`/publishable, pensada para el cliente, así que la seguridad depende de RLS. Ya no está fija en el código (se lee de `.env`), pero sigue en el historial de git; conviene rotarla desde el dashboard.
-* **El borrado definitivo todavía no tiene pantalla.** `eliminarExpedienteDefinitivo` (en `services/expedientes.ts`) ya limpia Storage, pero falta conectarlo a la UI con doble confirmación.
 * **Posibles archivos huérfanos en Storage.** Si falla la red entre borrar la fila y el objeto de un documento, el archivo queda suelto. `supabase/archivos_huerfanos.sql` los lista.
 
 Resueltos: la sesión ahora se guarda en `expo-secure-store` (`services/secureSessionStorage.ts`, con migración automática desde `AsyncStorage`) y la URL y la clave de Supabase salen de variables de entorno.

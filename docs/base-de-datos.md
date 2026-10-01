@@ -149,7 +149,6 @@ Las rutas tienen la forma `{tenant_id}/{expediente_id}/{uuid}.{ext}`; la primera
 
 Ordenadas por prioridad. Ninguna está aplicada; cualquier cambio en `supabase/` requiere confirmación previa.
 
-1. **Conectar el borrado definitivo a la pantalla (RF-17).** El servicio `eliminarExpedienteDefinitivo` (`services/expedientes.ts`) ya borra primero los objetos del bucket y luego el expediente (`ON DELETE CASCADE` no limpia Storage por sí solo); falta la UI con doble confirmación.
 3. **Cambiar el rol `public` por `authenticated`** en las políticas de `tenants`, `expedientes` (SELECT/INSERT/UPDATE) y `plazos`, y unificarlas con `is_tenant_owner()`. Hoy funcionan porque `auth.uid()` es NULL para anónimos, pero `authenticated` es más explícito.
 4. **Integridad cruzada de `tenant_id`:** nada impide que un hijo tenga un `tenant_id` distinto al de su expediente (solo `expediente_pdfs` lo valida en su política INSERT). Solución: clave única `(id, tenant_id)` en `expedientes` y FK compuesta en las tablas hijas.
 5. **Validación de `estado`:** agregar `CHECK` con los cinco valores (el plan lo describe como enum, pero en la base es `varchar`).
@@ -170,3 +169,6 @@ Aplicado manualmente en el SQL Editor de Supabase.
 
 ### 2026-10-01 — Verificación de RLS
 Ejecutado `supabase/verificar_rls.sql` en el SQL Editor: todas las tablas de `public` tienen `rls_activo = true`, y las 17 políticas de `pg_policies` coinciden con las documentadas. No hizo falta ningún cambio en la base.
+
+### 2026-10-01 — Borrado definitivo en la app
+La pantalla de detalle de un expediente archivado ofrece "Eliminar definitivamente", con doble confirmación (RF-17). Usa `eliminarExpedienteDefinitivo`, que borra primero los objetos del bucket y después el expediente (la cascada elimina filas de archivos y plazos).
