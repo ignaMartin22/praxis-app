@@ -3,7 +3,7 @@
 Documento de referencia del esquema de Supabase (Postgres + Storage) y de las políticas RLS vigentes.
 Fuente: esquema y `pg_policies` exportados del proyecto; `supabase/expediente_pdfs.sql`; uso real en el código (`services/`, `screens/`, `context/`).
 
-> Estado verificado el 2026-09-30 (políticas y RLS) y actualizado el 2026-10-01. Las políticas listadas son las que devolvió `pg_policies`, más la política DELETE de `expedientes`. **RLS está activo en todas las tablas de `public`** (verificado con `supabase/verificar_rls.sql`).
+> Estado verificado el 2026-09-30 (políticas y RLS) y actualizado el 2026-10-01. Las políticas listadas son las que devolvió `pg_policies`, más la política DELETE de `expedientes`. **RLS está activo en todas las tablas de `public` y en `storage.objects`** (verificado con `supabase/verificar_rls.sql`).
 
 ## 1. Modelo de aislamiento
 
@@ -168,10 +168,13 @@ Aplicado manualmente en el SQL Editor de Supabase.
 - **Verificación previa de FK hacia `expedientes`** (`pg_constraint.confdeltype`): `plazos_expediente_id_fkey`, `expediente_pdfs_expediente_id_fkey` y `documentos_expediente_id_fkey` eran todas `c` (`ON DELETE CASCADE`), por lo que no hizo falta modificar ninguna FK.
 
 ### 2026-10-01 — Verificación de RLS
-Ejecutado `supabase/verificar_rls.sql` en el SQL Editor: todas las tablas de `public` tienen `rls_activo = true`, y las 17 políticas de `pg_policies` coinciden con las documentadas. No hizo falta ningún cambio en la base.
+Ejecutado `supabase/verificar_rls.sql` en el SQL Editor: todas las tablas de `public` y `storage.objects` tienen `rls_activo = true`, y las 17 políticas de `pg_policies` coinciden con las documentadas. No hizo falta ningún cambio en la base.
 
 ### 2026-10-01 — Borrado definitivo en la app
-La pantalla de detalle de un expediente archivado ofrece "Eliminar definitivamente", con doble confirmación (RF-17). Usa `eliminarExpedienteDefinitivo`, que borra primero los objetos del bucket y después el expediente (la cascada elimina filas de archivos y plazos).
+La pantalla de detalle de un expediente archivado ofrece "Eliminar definitivamente", con doble confirmación: un aviso y un modal donde hay que escribir `ELIMINAR` (RF-17). Usa `eliminarExpedienteDefinitivo`, que borra primero los objetos del bucket y después el expediente (la cascada elimina filas de archivos y plazos).
 
 ### 2026-10-01 — Archivos huérfanos en Storage
 Ejecutado `supabase/archivos_huerfanos.sql`: el bucket `expediente-pdfs` no tiene objetos sin fila en `expediente_pdfs`. No hizo falta ninguna limpieza.
+
+### 2026-10-01 — Rotación de la clave publishable
+Se creó una nueva publishable key en el dashboard de Supabase (Project Settings > API Keys), se actualizó `.env` y se eliminó la anterior, que estaba en el historial de git desde el primer commit. La secret key no se tocó: nunca estuvo en el repositorio.

@@ -90,9 +90,14 @@ El detalle completo de columnas, funciones y políticas está en [docs/base-de-d
 
 ## Riesgos, dicho claramente
 
-* **La clave pública de Supabase es visible en el bundle.** Es la clave `anon`/publishable, pensada para el cliente, así que la seguridad depende de RLS. Ya no está fija en el código (se lee de `.env`), pero sigue en el historial de git; conviene rotarla desde el dashboard.
+Sin riesgos abiertos conocidos al 2026-10-01. Lo que se resolvió:
 
-Resueltos: la sesión ahora se guarda en `expo-secure-store` (`services/secureSessionStorage.ts`, con migración automática desde `AsyncStorage`) y la URL y la clave de Supabase salen de variables de entorno.
+* **Sesión en almacenamiento seguro.** Se guarda en `expo-secure-store` (`services/secureSessionStorage.ts`), con migración automática desde `AsyncStorage`.
+* **Credenciales fuera del código.** La URL y la clave de Supabase salen de variables de entorno (`.env`, ignorado por git), y la clave publishable fue rotada: la que quedó en el historial ya no es válida.
+* **RLS verificado.** Todas las tablas de `public` y `storage.objects` tienen RLS activo.
+* **Borrado definitivo sin archivos sueltos.** Elimina primero los objetos de Storage y se confirma escribiendo `ELIMINAR`. El bucket no tiene archivos huérfanos.
+
+Lo que sigue pendiente son funciones aún no construidas (ver [Estado](#estado)) y las mejoras de [docs/base-de-datos.md](docs/base-de-datos.md).
 
 ## Correrlo localmente
 
