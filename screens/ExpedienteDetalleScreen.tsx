@@ -17,7 +17,12 @@ import { useAuth } from '../context/AuthContext';
 import { colors, radius, spacing } from '../theme';
 import type { ExpedienteDetalleProps } from '../types/navigation';
 import type { ExpedientePdf } from '../types/database';
-import { archivarExpediente, restaurarExpediente, ESTADOS_ACTIVOS } from '../services/expedientes';
+import {
+  archivarExpediente,
+  restaurarExpediente,
+  eliminarExpedienteDefinitivo,
+  ESTADOS_ACTIVOS,
+} from '../services/expedientes';
 import type { Expediente } from '../services/expedientes';
 import {
   MAX_PDFS_POR_EXPEDIENTE,
@@ -45,6 +50,7 @@ export default function ExpedienteDetalleScreen({ route, navigation }: Expedient
   // Modal de restauración
   const [modalRestaurarVisible, setModalRestaurarVisible] = useState(false);
   const [guardandoRestaurar, setGuardandoRestaurar] = useState(false);
+  const [eliminando, setEliminando] = useState(false);
 
   useEffect(() => {
     fetchExpediente();
@@ -145,6 +151,45 @@ export default function ExpedienteDetalleScreen({ route, navigation }: Expedient
               return;
             }
             navigation.goBack();
+          },
+        },
+      ]
+    );
+  }
+
+  // Borrado definitivo (solo expedientes archivados): doble confirmación.
+  function confirmarEliminarDefinitivo() {
+    if (!expediente) return;
+    Alert.alert(
+      'Eliminar definitivamente',
+      `¿Eliminar "${expediente.caratula}" y todos sus documentos? Esta acción no se puede deshacer.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Continuar',
+          style: 'destructive',
+          onPress: () => {
+            Alert.alert(
+              'Confirmá la eliminación',
+              'Se borrarán el expediente y sus documentos de forma permanente.',
+              [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                  text: 'Eliminar',
+                  style: 'destructive',
+                  onPress: async () => {
+                    setEliminando(true);
+                    const { error } = await eliminarExpedienteDefinitivo(expedienteId);
+                    setEliminando(false);
+                    if (error) {
+                      Alert.alert('Error', error);
+                      return;
+                    }
+                    navigation.goBack();
+                  },
+                },
+              ]
+            );
           },
         },
       ]
@@ -327,9 +372,22 @@ export default function ExpedienteDetalleScreen({ route, navigation }: Expedient
       </TouchableOpacity>
 
       {archivado ? (
-        <TouchableOpacity style={styles.restaurarButton} onPress={abrirModalRestaurar}>
-          <Text style={styles.restaurarButtonText}>Restaurar expediente</Text>
-        </TouchableOpacity>
+        <>
+          <TouchableOpacity style={styles.restaurarButton} onPress={abrirModalRestaurar}>
+            <Text style={styles.restaurarButtonText}>Restaurar expediente</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.archivarButton, eliminando && styles.addPdfDisabled]}
+            onPress={confirmarEliminarDefinitivo}
+            disabled={eliminando}
+          >
+            {eliminando ? (
+              <ActivityIndicator color={colors.danger} />
+            ) : (
+              <Text style={styles.archivarButtonText}>Eliminar definitivamente</Text>
+            )}
+          </TouchableOpacity>
+        </>
       ) : (
         <TouchableOpacity style={styles.archivarButton} onPress={confirmarArchivar}>
           <Text style={styles.archivarButtonText}>Archivar expediente</Text>
