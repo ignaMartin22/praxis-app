@@ -3,7 +3,7 @@
 Documento de referencia del esquema de Supabase (Postgres + Storage) y de las políticas RLS vigentes.
 Fuente: esquema y `pg_policies` exportados del proyecto; `supabase/expediente_pdfs.sql`; uso real en el código (`services/`, `screens/`, `context/`).
 
-> Estado verificado el 2026-09-30, actualizado tras la migración [`expedientes` DELETE + baja de `documentos`](#historial-de-cambios). Las políticas listadas son las que devolvió `pg_policies` (más la nueva política DELETE de `expedientes`); esa vista **no indica si RLS está habilitado** en cada tabla (ver [Pendientes](#pendientes-y-mejoras-recomendadas)).
+> Estado verificado el 2026-09-30 (políticas y RLS) y actualizado el 2026-10-01. Las políticas listadas son las que devolvió `pg_policies`, más la política DELETE de `expedientes`. **RLS está activo en todas las tablas de `public`** (verificado con `supabase/verificar_rls.sql`).
 
 ## 1. Modelo de aislamiento
 
@@ -150,7 +150,6 @@ Las rutas tienen la forma `{tenant_id}/{expediente_id}/{uuid}.{ext}`; la primera
 Ordenadas por prioridad. Ninguna está aplicada; cualquier cambio en `supabase/` requiere confirmación previa.
 
 1. **Conectar el borrado definitivo a la pantalla (RF-17).** El servicio `eliminarExpedienteDefinitivo` (`services/expedientes.ts`) ya borra primero los objetos del bucket y luego el expediente (`ON DELETE CASCADE` no limpia Storage por sí solo); falta la UI con doble confirmación.
-2. **Confirmar que RLS está habilitado** en todas las tablas y en `storage.objects`: ejecutar `supabase/verificar_rls.sql`. Además, `supabase/archivos_huerfanos.sql` lista objetos del bucket sin fila en `expediente_pdfs`.
 3. **Cambiar el rol `public` por `authenticated`** en las políticas de `tenants`, `expedientes` (SELECT/INSERT/UPDATE) y `plazos`, y unificarlas con `is_tenant_owner()`. Hoy funcionan porque `auth.uid()` es NULL para anónimos, pero `authenticated` es más explícito.
 4. **Integridad cruzada de `tenant_id`:** nada impide que un hijo tenga un `tenant_id` distinto al de su expediente (solo `expediente_pdfs` lo valida en su política INSERT). Solución: clave única `(id, tenant_id)` en `expedientes` y FK compuesta en las tablas hijas.
 5. **Validación de `estado`:** agregar `CHECK` con los cinco valores (el plan lo describe como enum, pero en la base es `varchar`).
@@ -168,3 +167,6 @@ Aplicado manualmente en el SQL Editor de Supabase.
 - **Nueva política** `expedientes_delete_own_tenant` (`FOR DELETE TO authenticated USING (is_tenant_owner(tenant_id))`). Habilita el borrado definitivo (RF-17) solo para el dueño del tenant.
 - **Eliminada la tabla `documentos`** junto con sus dos políticas. Estaba vacía y no se usaba en el código; `expediente_pdfs` la reemplazaba.
 - **Verificación previa de FK hacia `expedientes`** (`pg_constraint.confdeltype`): `plazos_expediente_id_fkey`, `expediente_pdfs_expediente_id_fkey` y `documentos_expediente_id_fkey` eran todas `c` (`ON DELETE CASCADE`), por lo que no hizo falta modificar ninguna FK.
+
+### 2026-10-01 — Verificación de RLS
+Ejecutado `supabase/verificar_rls.sql` en el SQL Editor: todas las tablas de `public` tienen `rls_activo = true`, y las 17 políticas de `pg_policies` coinciden con las documentadas. No hizo falta ningún cambio en la base.
