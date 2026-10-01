@@ -83,20 +83,21 @@ El detalle completo de columnas, funciones y políticas está en [docs/base-de-d
 
 ## Estado
 
-* MVP en desarrollo. Funcionan: autenticación, expedientes (crear, listar, filtrar, cambiar estado, archivar, restaurar) y documentos.
-* **Pendiente:** borrado definitivo de expedientes con doble confirmación (la base y el servicio `eliminarExpedienteDefinitivo` ya existen; falta conectarlo a la pantalla).
+* MVP en desarrollo. Funcionan: autenticación, expedientes (crear, listar, filtrar, cambiar estado, archivar, restaurar, borrado definitivo) y documentos.
 * **Pendiente:** notificaciones push de vencimientos. Las tablas `plazos` y `notification_tokens` existen, pero la app todavía no las usa.
 * **Pendiente:** lectura sin conexión con caché local.
 * No hay tests automatizados todavía.
 
 ## Riesgos, dicho claramente
 
-* **RLS sin confirmar en la base.** El repositorio documenta las políticas, pero falta verificar que cada tabla y `storage.objects` tengan RLS habilitado. Ejecutar `supabase/verificar_rls.sql`: todas las filas deben dar `rls_activo = true`.
-* **La clave pública de Supabase es visible en el bundle.** Es la clave `anon`/publishable, pensada para el cliente, así que la seguridad depende de RLS. Ya no está fija en el código (se lee de `.env`), pero sigue en el historial de git; conviene rotarla desde el dashboard.
-* **El borrado definitivo todavía no tiene pantalla.** `eliminarExpedienteDefinitivo` (en `services/expedientes.ts`) ya limpia Storage, pero falta conectarlo a la UI con doble confirmación.
-* **Posibles archivos huérfanos en Storage.** Si falla la red entre borrar la fila y el objeto de un documento, el archivo queda suelto. `supabase/archivos_huerfanos.sql` los lista.
+Sin riesgos abiertos conocidos al 2026-10-01. Lo que se resolvió:
 
-Resueltos: la sesión ahora se guarda en `expo-secure-store` (`services/secureSessionStorage.ts`, con migración automática desde `AsyncStorage`) y la URL y la clave de Supabase salen de variables de entorno.
+* **Sesión en almacenamiento seguro.** Se guarda en `expo-secure-store` (`services/secureSessionStorage.ts`), con migración automática desde `AsyncStorage`.
+* **Credenciales fuera del código.** La URL y la clave de Supabase salen de variables de entorno (`.env`, ignorado por git), y la clave publishable fue rotada: la que quedó en el historial ya no es válida.
+* **RLS verificado.** Todas las tablas de `public` y `storage.objects` tienen RLS activo.
+* **Borrado definitivo sin archivos sueltos.** Elimina primero los objetos de Storage y se confirma escribiendo `ELIMINAR`. El bucket no tiene archivos huérfanos.
+
+Lo que sigue pendiente son funciones aún no construidas (ver [Estado](#estado)) y las mejoras de [docs/base-de-datos.md](docs/base-de-datos.md).
 
 ## Correrlo localmente
 

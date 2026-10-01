@@ -3,7 +3,7 @@
 Documento de referencia del esquema de Supabase (Postgres + Storage) y de las políticas RLS vigentes.
 Fuente: esquema y `pg_policies` exportados del proyecto; `supabase/expediente_pdfs.sql`; uso real en el código (`services/`, `screens/`, `context/`).
 
-> Estado verificado el 2026-09-30, actualizado tras la migración [`expedientes` DELETE + baja de `documentos`](#historial-de-cambios). Las políticas listadas son las que devolvió `pg_policies` (más la nueva política DELETE de `expedientes`); esa vista **no indica si RLS está habilitado** en cada tabla (ver [Pendientes](#pendientes-y-mejoras-recomendadas)).
+> Estado verificado el 2026-09-30 (políticas y RLS) y actualizado el 2026-10-01. Las políticas listadas son las que devolvió `pg_policies`, más la política DELETE de `expedientes`. **RLS está activo en todas las tablas de `public` y en `storage.objects`** (verificado con `supabase/verificar_rls.sql`).
 
 ## 1. Modelo de aislamiento
 
@@ -42,7 +42,7 @@ Entidad central.
 
 Archivar = `estado = 'Archivado'`; restaurar = volver a un estado activo (`services/expedientes.ts`).
 
-Borrado definitivo: la política DELETE existe y las FK hijas (`plazos`, `expediente_pdfs`) usan `ON DELETE CASCADE` (verificado con `pg_constraint`, `confdeltype = 'c'`), por lo que borrar un expediente elimina sus plazos y sus filas de archivos. **No elimina los objetos de Storage**: la app debe borrarlos antes (ver Pendientes).
+Borrado definitivo: la política DELETE existe y las FK hijas (`plazos`, `expediente_pdfs`) usan `ON DELETE CASCADE` (verificado con `pg_constraint`, `confdeltype = 'c'`), por lo que borrar un expediente elimina sus plazos y sus filas de archivos. **No elimina los objetos de Storage**: por eso la app los borra antes (`eliminarExpedienteDefinitivo`).
 
 ### `expediente_pdfs`
 Metadata de los archivos adjuntos de un expediente. Los bytes viven en Storage (bucket `expediente-pdfs`). Pese al nombre, el esquema admite `pdf`, `docx`, `jpg`, `png`; la UI del MVP solo adjunta PDF.
@@ -149,16 +149,14 @@ Las rutas tienen la forma `{tenant_id}/{expediente_id}/{uuid}.{ext}`; la primera
 
 Ordenadas por prioridad. Ninguna está aplicada; cualquier cambio en `supabase/` requiere confirmación previa.
 
-1. **Conectar el borrado definitivo a la pantalla (RF-17).** El servicio `eliminarExpedienteDefinitivo` (`services/expedientes.ts`) ya borra primero los objetos del bucket y luego el expediente (`ON DELETE CASCADE` no limpia Storage por sí solo); falta la UI con doble confirmación.
-2. **Confirmar que RLS está habilitado** en todas las tablas y en `storage.objects`: ejecutar `supabase/verificar_rls.sql`. Además, `supabase/archivos_huerfanos.sql` lista objetos del bucket sin fila en `expediente_pdfs`.
-3. **Cambiar el rol `public` por `authenticated`** en las políticas de `tenants`, `expedientes` (SELECT/INSERT/UPDATE) y `plazos`, y unificarlas con `is_tenant_owner()`. Hoy funcionan porque `auth.uid()` es NULL para anónimos, pero `authenticated` es más explícito.
-4. **Integridad cruzada de `tenant_id`:** nada impide que un hijo tenga un `tenant_id` distinto al de su expediente (solo `expediente_pdfs` lo valida en su política INSERT). Solución: clave única `(id, tenant_id)` en `expedientes` y FK compuesta en las tablas hijas.
-5. **Validación de `estado`:** agregar `CHECK` con los cinco valores (el plan lo describe como enum, pero en la base es `varchar`).
-6. **`notification_tokens`:** agregar `UNIQUE (device_token)`, una política UPDATE (necesaria para `upsert`) y evaluar atarlo a `user_id`.
-7. **`plazos`:** completar FK de `tenant_id`, hacer `expediente_id` obligatorio si no habrá plazos sueltos, y definir si reemplazará a `expedientes.fecha_vencimiento` (hoy hay dos fechas de vencimiento).
-8. **Índices:** `expedientes (tenant_id, estado)`, `plazos (expediente_id)`, y un índice parcial `plazos (fecha_vencimiento) WHERE notificado = false` para el job de avisos.
-9. **Renombrar `expediente_pdfs`** a `expediente_archivos` si se habilitan otros tipos de archivo.
-10. Agregar `UNIQUE (tenant_id, numero_expediente)` si el número no debe repetirse dentro de un estudio.
+1. **Cambiar el rol `public` por `authenticated`** en las políticas de `tenants`, `expedientes` (SELECT/INSERT/UPDATE) y `plazos`, y unificarlas con `is_tenant_owner()`. Hoy funcionan porque `auth.uid()` es NULL para anónimos, pero `authenticated` es más explícito.
+2. **Integridad cruzada de `tenant_id`:** nada impide que un hijo tenga un `tenant_id` distinto al de su expediente (solo `expediente_pdfs` lo valida en su política INSERT). Solución: clave única `(id, tenant_id)` en `expedientes` y FK compuesta en las tablas hijas.
+3. **Validación de `estado`:** agregar `CHECK` con los cinco valores (el plan lo describe como enum, pero en la base es `varchar`).
+4. **`notification_tokens`:** agregar `UNIQUE (device_token)`, una política UPDATE (necesaria para `upsert`) y evaluar atarlo a `user_id`.
+5. **`plazos`:** completar FK de `tenant_id`, hacer `expediente_id` obligatorio si no habrá plazos sueltos, y definir si reemplazará a `expedientes.fecha_vencimiento` (hoy hay dos fechas de vencimiento).
+6. **Índices:** `expedientes (tenant_id, estado)`, `plazos (expediente_id)`, y un índice parcial `plazos (fecha_vencimiento) WHERE notificado = false` para el job de avisos.
+7. **Renombrar `expediente_pdfs`** a `expediente_archivos` si se habilitan otros tipos de archivo.
+8. Agregar `UNIQUE (tenant_id, numero_expediente)` si el número no debe repetirse dentro de un estudio.
 
 ## Historial de cambios
 
@@ -168,3 +166,15 @@ Aplicado manualmente en el SQL Editor de Supabase.
 - **Nueva política** `expedientes_delete_own_tenant` (`FOR DELETE TO authenticated USING (is_tenant_owner(tenant_id))`). Habilita el borrado definitivo (RF-17) solo para el dueño del tenant.
 - **Eliminada la tabla `documentos`** junto con sus dos políticas. Estaba vacía y no se usaba en el código; `expediente_pdfs` la reemplazaba.
 - **Verificación previa de FK hacia `expedientes`** (`pg_constraint.confdeltype`): `plazos_expediente_id_fkey`, `expediente_pdfs_expediente_id_fkey` y `documentos_expediente_id_fkey` eran todas `c` (`ON DELETE CASCADE`), por lo que no hizo falta modificar ninguna FK.
+
+### 2026-10-01 — Verificación de RLS
+Ejecutado `supabase/verificar_rls.sql` en el SQL Editor: todas las tablas de `public` y `storage.objects` tienen `rls_activo = true`, y las 17 políticas de `pg_policies` coinciden con las documentadas. No hizo falta ningún cambio en la base.
+
+### 2026-10-01 — Borrado definitivo en la app
+La pantalla de detalle de un expediente archivado ofrece "Eliminar definitivamente", con doble confirmación: un aviso y un modal donde hay que escribir `ELIMINAR` (RF-17). Usa `eliminarExpedienteDefinitivo`, que borra primero los objetos del bucket y después el expediente (la cascada elimina filas de archivos y plazos).
+
+### 2026-10-01 — Archivos huérfanos en Storage
+Ejecutado `supabase/archivos_huerfanos.sql`: el bucket `expediente-pdfs` no tiene objetos sin fila en `expediente_pdfs`. No hizo falta ninguna limpieza.
+
+### 2026-10-01 — Rotación de la clave publishable
+Se creó una nueva publishable key en el dashboard de Supabase (Project Settings > API Keys), se actualizó `.env` y se eliminó la anterior, que estaba en el historial de git desde el primer commit. La secret key no se tocó: nunca estuvo en el repositorio.

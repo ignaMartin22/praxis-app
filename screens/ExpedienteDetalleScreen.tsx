@@ -9,6 +9,7 @@ import {
   Modal,
   ScrollView,
   Linking,
+  TextInput,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -17,7 +18,12 @@ import { useAuth } from '../context/AuthContext';
 import { colors, radius, spacing } from '../theme';
 import type { ExpedienteDetalleProps } from '../types/navigation';
 import type { ExpedientePdf } from '../types/database';
-import { archivarExpediente, restaurarExpediente, ESTADOS_ACTIVOS } from '../services/expedientes';
+import {
+  archivarExpediente,
+  restaurarExpediente,
+  eliminarExpedienteDefinitivo,
+  ESTADOS_ACTIVOS,
+} from '../services/expedientes';
 import type { Expediente } from '../services/expedientes';
 import {
   MAX_PDFS_POR_EXPEDIENTE,
@@ -26,6 +32,8 @@ import {
   eliminarPdf,
   obtenerUrlFirmada,
 } from '../services/expedientePdfs';
+
+const PALABRA_CONFIRMACION = 'ELIMINAR';
 
 export default function ExpedienteDetalleScreen({ route, navigation }: ExpedienteDetalleProps) {
   const { expedienteId } = route.params;
@@ -45,6 +53,12 @@ export default function ExpedienteDetalleScreen({ route, navigation }: Expedient
   // Modal de restauración
   const [modalRestaurarVisible, setModalRestaurarVisible] = useState(false);
   const [guardandoRestaurar, setGuardandoRestaurar] = useState(false);
+  const [eliminando, setEliminando] = useState(false);
+
+  // Modal de eliminación definitiva: exige escribir la palabra de confirmación
+  const [modalEliminarVisible, setModalEliminarVisible] = useState(false);
+  const [textoConfirmacion, setTextoConfirmacion] = useState('');
+  const palabraConfirmada = textoConfirmacion.trim() === PALABRA_CONFIRMACION;
 
   useEffect(() => {
     fetchExpediente();
@@ -149,6 +163,38 @@ export default function ExpedienteDetalleScreen({ route, navigation }: Expedient
         },
       ]
     );
+  }
+
+  // Borrado definitivo (solo expedientes archivados): doble confirmación.
+  function confirmarEliminarDefinitivo() {
+    if (!expediente) return;
+    Alert.alert(
+      'Eliminar definitivamente',
+      `¿Eliminar "${expediente.caratula}" y todos sus documentos? Esta acción no se puede deshacer.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Continuar',
+          style: 'destructive',
+          onPress: () => {
+            setTextoConfirmacion('');
+            setModalEliminarVisible(true);
+          },
+        },
+      ]
+    );
+  }
+
+  async function eliminarDefinitivamente() {
+    setModalEliminarVisible(false);
+    setEliminando(true);
+    const { error } = await eliminarExpedienteDefinitivo(expedienteId);
+    setEliminando(false);
+    if (error) {
+      Alert.alert('Error', error);
+      return;
+    }
+    navigation.goBack();
   }
 
   async function agregarPdf() {
@@ -327,9 +373,22 @@ export default function ExpedienteDetalleScreen({ route, navigation }: Expedient
       </TouchableOpacity>
 
       {archivado ? (
-        <TouchableOpacity style={styles.restaurarButton} onPress={abrirModalRestaurar}>
-          <Text style={styles.restaurarButtonText}>Restaurar expediente</Text>
-        </TouchableOpacity>
+        <>
+          <TouchableOpacity style={styles.restaurarButton} onPress={abrirModalRestaurar}>
+            <Text style={styles.restaurarButtonText}>Restaurar expediente</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.archivarButton, eliminando && styles.addPdfDisabled]}
+            onPress={confirmarEliminarDefinitivo}
+            disabled={eliminando}
+          >
+            {eliminando ? (
+              <ActivityIndicator color={colors.danger} />
+            ) : (
+              <Text style={styles.archivarButtonText}>Eliminar definitivamente</Text>
+            )}
+          </TouchableOpacity>
+        </>
       ) : (
         <TouchableOpacity style={styles.archivarButton} onPress={confirmarArchivar}>
           <Text style={styles.archivarButtonText}>Archivar expediente</Text>
@@ -358,6 +417,35 @@ export default function ExpedienteDetalleScreen({ route, navigation }: Expedient
               </TouchableOpacity>
               <TouchableOpacity onPress={confirmarEstado} disabled={guardandoEstado}>
                 <Text style={styles.guardar}>{guardandoEstado ? 'Guardando...' : 'Guardar'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal: confirmar eliminación definitiva (hay que escribir ELIMINAR) */}
+      <Modal visible={modalEliminarVisible} transparent animationType="fade">
+        <View style={styles.overlay}>
+          <View style={styles.modalBox}>
+            <Text style={styles.modalTitulo}>Eliminar definitivamente</Text>
+            <Text style={styles.modalDescripcion}>
+              Se borrarán el expediente y sus documentos de forma permanente. Para confirmar, escribí {PALABRA_CONFIRMACION}.
+            </Text>
+            <TextInput
+              style={styles.inputConfirmar}
+              value={textoConfirmacion}
+              onChangeText={setTextoConfirmacion}
+              placeholder={PALABRA_CONFIRMACION}
+              placeholderTextColor={colors.muted}
+              autoCapitalize="characters"
+              autoCorrect={false}
+            />
+            <View style={styles.botonesModal}>
+              <TouchableOpacity onPress={() => setModalEliminarVisible(false)}>
+                <Text style={styles.cancelar}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={eliminarDefinitivamente} disabled={!palabraConfirmada}>
+                <Text style={[styles.eliminarConfirmar, !palabraConfirmada && styles.addPdfDisabled]}>Eliminar</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -489,6 +577,17 @@ const styles = StyleSheet.create({
   },
   restaurarButtonText: { color: colors.navy, fontSize: 15, fontWeight: '700' },
   modalDescripcion: { color: colors.mist, fontSize: 14, marginBottom: 12 },
+  inputConfirmar: {
+    color: colors.ivory,
+    backgroundColor: colors.navyInput,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    paddingHorizontal: 12,
+    height: 46,
+    letterSpacing: 2,
+  },
+  eliminarConfirmar: { color: colors.danger, fontWeight: '700', fontSize: 15 },
   overlay: {
     flex: 1,
     backgroundColor: colors.overlay,
