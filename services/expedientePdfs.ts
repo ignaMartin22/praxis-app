@@ -147,6 +147,25 @@ export async function eliminarPdf(pdf: ExpedientePdf): Promise<ResultadoPdf<null
   return { data: null, error: null };
 }
 
+// Borra del bucket todos los archivos de un expediente. Es repetible: quitar
+// objetos que ya no existen no da error, así que un reintento completa la limpieza.
+export async function eliminarArchivosDeExpediente(expedienteId: string): Promise<ResultadoPdf<null>> {
+  const { data, error } = await supabase
+    .from('expediente_pdfs')
+    .select('storage_path')
+    .eq('expediente_id', expedienteId);
+
+  if (error) return { data: null, error: 'No se pudieron listar los documentos del expediente.' };
+
+  const rutas = (data ?? []).map((fila) => fila.storage_path as string);
+  if (rutas.length === 0) return { data: null, error: null };
+
+  const { error: errorStorage } = await supabase.storage.from(STORAGE_BUCKET).remove(rutas);
+  if (errorStorage) return { data: null, error: 'No se pudieron eliminar los documentos del expediente.' };
+
+  return { data: null, error: null };
+}
+
 export async function obtenerUrlFirmada(pdf: ExpedientePdf): Promise<string | null> {
   const { data, error } = await supabase.storage
     .from(STORAGE_BUCKET)
