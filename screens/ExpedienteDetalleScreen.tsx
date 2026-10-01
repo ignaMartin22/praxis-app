@@ -9,6 +9,7 @@ import {
   Modal,
   ScrollView,
   Linking,
+  TextInput,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -32,6 +33,8 @@ import {
   obtenerUrlFirmada,
 } from '../services/expedientePdfs';
 
+const PALABRA_CONFIRMACION = 'ELIMINAR';
+
 export default function ExpedienteDetalleScreen({ route, navigation }: ExpedienteDetalleProps) {
   const { expedienteId } = route.params;
   const { tenantId } = useAuth();
@@ -51,6 +54,11 @@ export default function ExpedienteDetalleScreen({ route, navigation }: Expedient
   const [modalRestaurarVisible, setModalRestaurarVisible] = useState(false);
   const [guardandoRestaurar, setGuardandoRestaurar] = useState(false);
   const [eliminando, setEliminando] = useState(false);
+
+  // Modal de eliminación definitiva: exige escribir la palabra de confirmación
+  const [modalEliminarVisible, setModalEliminarVisible] = useState(false);
+  const [textoConfirmacion, setTextoConfirmacion] = useState('');
+  const palabraConfirmada = textoConfirmacion.trim() === PALABRA_CONFIRMACION;
 
   useEffect(() => {
     fetchExpediente();
@@ -169,31 +177,24 @@ export default function ExpedienteDetalleScreen({ route, navigation }: Expedient
           text: 'Continuar',
           style: 'destructive',
           onPress: () => {
-            Alert.alert(
-              'Confirmá la eliminación',
-              'Se borrarán el expediente y sus documentos de forma permanente.',
-              [
-                { text: 'Cancelar', style: 'cancel' },
-                {
-                  text: 'Eliminar',
-                  style: 'destructive',
-                  onPress: async () => {
-                    setEliminando(true);
-                    const { error } = await eliminarExpedienteDefinitivo(expedienteId);
-                    setEliminando(false);
-                    if (error) {
-                      Alert.alert('Error', error);
-                      return;
-                    }
-                    navigation.goBack();
-                  },
-                },
-              ]
-            );
+            setTextoConfirmacion('');
+            setModalEliminarVisible(true);
           },
         },
       ]
     );
+  }
+
+  async function eliminarDefinitivamente() {
+    setModalEliminarVisible(false);
+    setEliminando(true);
+    const { error } = await eliminarExpedienteDefinitivo(expedienteId);
+    setEliminando(false);
+    if (error) {
+      Alert.alert('Error', error);
+      return;
+    }
+    navigation.goBack();
   }
 
   async function agregarPdf() {
@@ -422,6 +423,35 @@ export default function ExpedienteDetalleScreen({ route, navigation }: Expedient
         </View>
       </Modal>
 
+      {/* Modal: confirmar eliminación definitiva (hay que escribir ELIMINAR) */}
+      <Modal visible={modalEliminarVisible} transparent animationType="fade">
+        <View style={styles.overlay}>
+          <View style={styles.modalBox}>
+            <Text style={styles.modalTitulo}>Eliminar definitivamente</Text>
+            <Text style={styles.modalDescripcion}>
+              Se borrarán el expediente y sus documentos de forma permanente. Para confirmar, escribí {PALABRA_CONFIRMACION}.
+            </Text>
+            <TextInput
+              style={styles.inputConfirmar}
+              value={textoConfirmacion}
+              onChangeText={setTextoConfirmacion}
+              placeholder={PALABRA_CONFIRMACION}
+              placeholderTextColor={colors.muted}
+              autoCapitalize="characters"
+              autoCorrect={false}
+            />
+            <View style={styles.botonesModal}>
+              <TouchableOpacity onPress={() => setModalEliminarVisible(false)}>
+                <Text style={styles.cancelar}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={eliminarDefinitivamente} disabled={!palabraConfirmada}>
+                <Text style={[styles.eliminarConfirmar, !palabraConfirmada && styles.addPdfDisabled]}>Eliminar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* Modal: restaurar expediente */}
       <Modal visible={modalRestaurarVisible} transparent animationType="fade">
         <View style={styles.overlay}>
@@ -547,6 +577,17 @@ const styles = StyleSheet.create({
   },
   restaurarButtonText: { color: colors.navy, fontSize: 15, fontWeight: '700' },
   modalDescripcion: { color: colors.mist, fontSize: 14, marginBottom: 12 },
+  inputConfirmar: {
+    color: colors.ivory,
+    backgroundColor: colors.navyInput,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    paddingHorizontal: 12,
+    height: 46,
+    letterSpacing: 2,
+  },
+  eliminarConfirmar: { color: colors.danger, fontWeight: '700', fontSize: 15 },
   overlay: {
     flex: 1,
     backgroundColor: colors.overlay,
